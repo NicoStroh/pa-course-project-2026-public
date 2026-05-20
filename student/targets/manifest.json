@@ -1,0 +1,735 @@
+{
+  "schema_version": "1.0",
+  "targets": [
+    {
+      "id": "toy-command-runner",
+      "name": "Toy Command Runner",
+      "path": "toy_command_runner",
+      "language": "python",
+      "kind": "library",
+      "entrypoints": [
+        {
+          "name": "run-backup",
+          "command": [
+            "python",
+            "-m",
+            "toybackup.cli"
+          ],
+          "usage": "toybackup.cli",
+          "positionals": [
+            {
+              "name": "arg0",
+              "help": "positional argument",
+              "nargs": "?",
+              "default": null
+            }
+          ],
+          "options": []
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "toybackup.cli",
+        "daily"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Small teaching target with one intentional command-injection vulnerability."
+    },
+    {
+      "id": "toy-rule-engine",
+      "name": "Toy Rule Engine",
+      "path": "toy_rule_engine",
+      "language": "python",
+      "kind": "library",
+      "entrypoints": [
+        {
+          "name": "evaluate-rule",
+          "command": [
+            "python",
+            "-m",
+            "rule_engine.cli"
+          ],
+          "usage": "rule_engine.cli",
+          "positionals": [
+            {
+              "name": "rule",
+              "help": "",
+              "nargs": "?",
+              "default": "subtotal * 0.10"
+            }
+          ],
+          "options": [
+            {
+              "flags": [
+                "--subtotal"
+              ],
+              "help": "",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": 42.0,
+              "action": null
+            }
+          ]
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "rule_engine.cli",
+        "subtotal * 0.10"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Small teaching target with one intentional code-injection vulnerability."
+    },
+    {
+      "id": "toy-tiny-sql-app",
+      "name": "Tiny SQL App",
+      "path": "toy_tiny_sql_app",
+      "language": "python",
+      "kind": "library",
+      "entrypoints": [
+        {
+          "name": "search-customers",
+          "command": [
+            "python",
+            "-m",
+            "tiny_sql_app.cli"
+          ],
+          "usage": "tiny_sql_app.cli",
+          "positionals": [
+            {
+              "name": "term",
+              "help": "",
+              "nargs": "?",
+              "default": "alice"
+            }
+          ],
+          "options": []
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "tiny_sql_app.cli",
+        "alice"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Small teaching target with one intentional SQL-injection vulnerability."
+    },
+    {
+      "id": "toy-note-server",
+      "name": "Note Server",
+      "path": "toy_note_server",
+      "language": "python",
+      "kind": "library",
+      "entrypoints": [
+        {
+          "name": "read-note",
+          "command": [
+            "python",
+            "-m",
+            "note_server.cli"
+          ],
+          "usage": "note_server.cli",
+          "positionals": [
+            {
+              "name": "name",
+              "help": "",
+              "nargs": "?",
+              "default": "welcome.txt"
+            }
+          ],
+          "options": []
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "note_server.cli",
+        "welcome.txt"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Small teaching target with one intentional path-traversal vulnerability."
+    },
+    {
+      "id": "toy-pickle-profile-loader",
+      "name": "Pickle Profile Loader",
+      "path": "toy_pickle_profile_loader",
+      "language": "python",
+      "kind": "library",
+      "entrypoints": [
+        {
+          "name": "load-profile",
+          "command": [
+            "python",
+            "-m",
+            "profile_loader.cli"
+          ],
+          "usage": "profile_loader.cli",
+          "positionals": [
+            {
+              "name": "payload",
+              "help": "",
+              "nargs": "?",
+              "default": null
+            }
+          ],
+          "options": []
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "profile_loader.cli"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Small teaching target with one intentional unsafe-deserialization vulnerability."
+    },
+    {
+      "id": "markdown2",
+      "name": "markdown2",
+      "path": "markdown2",
+      "language": "python",
+      "kind": "cli",
+      "entrypoints": [
+        {
+          "name": "render-markdown",
+          "command": [
+            "python",
+            "-m",
+            "markdown2"
+          ],
+          "usage": "markdown2 [PATHS...]",
+          "positionals": [
+            {
+              "name": "paths",
+              "help": "optional list of files to convert.If none are given, stdin will be used",
+              "nargs": "*",
+              "default": null
+            }
+          ],
+          "options": [
+            {
+              "flags": [
+                "--version"
+              ],
+              "help": "",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": "version"
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "help": "more verbose output",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": "store_const"
+            },
+            {
+              "flags": [
+                "--encoding"
+              ],
+              "help": "specify encoding of text content",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": "utf-8",
+              "action": null
+            },
+            {
+              "flags": [
+                "--html4tags"
+              ],
+              "help": "use HTML 4 style for empty element tags",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": false,
+              "action": "store_true"
+            },
+            {
+              "flags": [
+                "-s",
+                "--safe"
+              ],
+              "help": "sanitize literal HTML: 'escape' escapes HTML meta chars, 'replace' replaces with an [HTML_REMOVED] note",
+              "takes_value": true,
+              "metavar": "MODE",
+              "required": null,
+              "default": null,
+              "action": null
+            },
+            {
+              "flags": [
+                "-x",
+                "--extras"
+              ],
+              "help": "Turn on specific extra features (not part of the core Markdown spec). See above.",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": "append"
+            },
+            {
+              "flags": [
+                "--use-file-vars"
+              ],
+              "help": "Look for and use Emacs-style 'markdown-extras' file var to turn on extras. See <https://github.com/trentm/python-markdown2/wiki/Extras>",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": false,
+              "action": null
+            },
+            {
+              "flags": [
+                "--link-patterns-file"
+              ],
+              "help": "path to a link pattern file",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": null
+            },
+            {
+              "flags": [
+                "--self-test"
+              ],
+              "help": "run internal self-tests (some doctests)",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": "store_true"
+            },
+            {
+              "flags": [
+                "--compare"
+              ],
+              "help": "run against Markdown.pl as well (for testing)",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": false,
+              "action": "store_true"
+            },
+            {
+              "flags": [
+                "--output"
+              ],
+              "help": "output to a file instead of stdout",
+              "takes_value": true,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": null
+            },
+            {
+              "flags": [
+                "--gzip-output"
+              ],
+              "help": "also write a gzip-compressed copy of the output file",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": null,
+              "action": "store_true"
+            }
+          ]
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "markdown2",
+        "README.md"
+      ],
+      "pythonpath": [
+        "lib"
+      ],
+      "execution": {
+        "working_directory": ".",
+        "requires_install": false,
+        "install_in_disposable_copy": false
+      },
+      "exploit_validation": {
+        "timeout_seconds": 10,
+        "network": "none"
+      },
+      "notes": "Public benchmark copy of markdown2 with an intentionally injected vulnerability."
+    },
+    {
+      "id": "tgconvertor",
+      "name": "TGConvertor",
+      "path": "TGConvertor/TGConvertor-master",
+      "language": "python",
+      "kind": "cli",
+      "entrypoints": [
+        {
+          "name": "show-reports",
+          "command": [
+            "python",
+            "-m",
+            "TGConvertor",
+            "show-reports"
+          ],
+          "usage": "TGConvertor show-reports [ROUTE]",
+          "positionals": [
+            {
+              "name": "route",
+              "help": "route inside the bundled reports directory",
+              "nargs": "?",
+              "default": "."
+            }
+          ],
+          "options": []
+        },
+        {
+          "name": "show-report",
+          "command": [
+            "python",
+            "-m",
+            "TGConvertor",
+            "show-report"
+          ],
+          "usage": "TGConvertor show-report LOCATION",
+          "positionals": [
+            {
+              "name": "location",
+              "help": "location of the report file to display",
+              "nargs": "?",
+              "default": "sample.txt"
+            }
+          ],
+          "options": []
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "TGConvertor",
+        "show-report",
+        "sample.txt"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "execution": {
+        "working_directory": ".",
+        "requires_install": false,
+        "install_in_disposable_copy": false
+      },
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Public TGConvertor CLI with both a safe report-directory listing command and an intentionally unsafe report reader for path-traversal benchmarking."
+    },
+    {
+      "id": "backup-py",
+      "name": "backup.py",
+      "path": "backup-py",
+      "language": "python",
+      "kind": "cli",
+      "entrypoints": [
+        {
+          "name": "extract-backup",
+          "command": [
+            "python",
+            "backup.py",
+            "--extract"
+          ],
+          "usage": "backup.py --extract ARCHIVE PASS [OPTIONS]",
+          "positionals": [
+            {
+              "name": "archive",
+              "help": "archive to extract",
+              "nargs": "?",
+              "default": "backup.py"
+            },
+            {
+              "name": "pass",
+              "help": "decryption password",
+              "nargs": "?",
+              "default": "demo"
+            }
+          ],
+          "options": [
+            {
+              "flags": [
+                "-c",
+                "--checksum"
+              ],
+              "help": "generate or check SHA256 checksums",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": false,
+              "action": "store_true"
+            },
+            {
+              "flags": [
+                "-V",
+                "--verbose"
+              ],
+              "help": "enable verbose mode",
+              "takes_value": false,
+              "metavar": null,
+              "required": null,
+              "default": false,
+              "action": "store_true"
+            },
+            {
+              "flags": [
+                "--restore-state"
+              ],
+              "help": "load a saved extraction state file before resuming an extract operation",
+              "takes_value": true,
+              "metavar": "STATE",
+              "required": null,
+              "default": null,
+              "action": null
+            }
+          ]
+        }
+      ],
+      "test": [
+        "python",
+        "backup.py",
+        "--help"
+      ],
+      "pythonpath": [
+        "."
+      ],
+      "execution": {
+        "working_directory": ".",
+        "requires_install": false,
+        "install_in_disposable_copy": false
+      },
+      "exploit_validation": {
+        "timeout_seconds": 5,
+        "network": "none"
+      },
+      "notes": "Public backup.py CLI with an intentionally injected unsafe deserialization vulnerability in extract state restoration."
+    },
+    {
+      "id": "fossier",
+      "name": "fossier",
+      "path": "fossier",
+      "language": "python",
+      "kind": "cli",
+      "entrypoints": [
+        {
+          "name": "report",
+          "command": [
+            "python",
+            "-m",
+            "fossier",
+            "report"
+          ],
+          "usage": "fossier report --repo OWNER/REPO [--db-path PATH] [--days N] [--username-contains TEXT]",
+          "positionals": [],
+          "options": [
+            {
+              "flags": [
+                "--repo",
+                "-r"
+              ],
+              "help": "repository as owner/repo",
+              "takes_value": true,
+              "metavar": "OWNER/REPO",
+              "required": null,
+              "default": "public/demo",
+              "action": null
+            },
+            {
+              "flags": [
+                "--db-path"
+              ],
+              "help": "path to database file",
+              "takes_value": true,
+              "metavar": "PATH",
+              "required": null,
+              "default": "/tmp/fossier.db",
+              "action": null
+            },
+            {
+              "flags": [
+                "--days"
+              ],
+              "help": "time window in days",
+              "takes_value": true,
+              "metavar": "N",
+              "required": null,
+              "default": 30,
+              "action": null
+            },
+            {
+              "flags": [
+                "--username-contains"
+              ],
+              "help": "only include contributors whose username contains this text",
+              "takes_value": true,
+              "metavar": "TEXT",
+              "required": null,
+              "default": "",
+              "action": null
+            },
+            {
+              "flags": [
+                "--format",
+                "-f"
+              ],
+              "help": "output format",
+              "takes_value": true,
+              "metavar": "FMT",
+              "required": null,
+              "default": "text",
+              "action": null
+            }
+          ]
+        },
+        {
+          "name": "rule-preview",
+          "command": [
+            "python",
+            "-m",
+            "fossier",
+            "rule-preview"
+          ],
+          "usage": "fossier rule-preview EXPRESSION [--username NAME] [--trust-tier TIER] [--repo-owner OWNER] [--repo-name NAME]",
+          "positionals": [
+            {
+              "name": "expression",
+              "help": "python expression used to preview a moderation rule result",
+              "nargs": "?",
+              "default": "username.upper()"
+            }
+          ],
+          "options": [
+            {
+              "flags": [
+                "--username"
+              ],
+              "help": "sample contributor username",
+              "takes_value": true,
+              "metavar": "NAME",
+              "required": null,
+              "default": "contributor",
+              "action": null
+            },
+            {
+              "flags": [
+                "--trust-tier"
+              ],
+              "help": "sample trust tier for previewing a rule",
+              "takes_value": true,
+              "metavar": "TIER",
+              "required": null,
+              "default": "unknown",
+              "action": null
+            },
+            {
+              "flags": [
+                "--repo-owner"
+              ],
+              "help": "sample repository owner",
+              "takes_value": true,
+              "metavar": "OWNER",
+              "required": null,
+              "default": "public",
+              "action": null
+            },
+            {
+              "flags": [
+                "--repo-name"
+              ],
+              "help": "sample repository name",
+              "takes_value": true,
+              "metavar": "NAME",
+              "required": null,
+              "default": "demo",
+              "action": null
+            },
+            {
+              "flags": [
+                "--format",
+                "-f"
+              ],
+              "help": "output format",
+              "takes_value": true,
+              "metavar": "FMT",
+              "required": null,
+              "default": "text",
+              "action": null
+            }
+          ]
+        }
+      ],
+      "test": [
+        "python",
+        "-m",
+        "fossier",
+        "report",
+        "--repo",
+        "public/demo",
+        "--db-path",
+        "/tmp/fossier.db"
+      ],
+      "pythonpath": [
+        "src"
+      ],
+      "execution": {
+        "working_directory": ".",
+        "requires_install": false,
+        "install_in_disposable_copy": false
+      },
+      "exploit_validation": {
+        "timeout_seconds": 10,
+        "network": "none"
+      },
+      "notes": "Public fossier CLI with intentionally injected SQL injection in the report username filter and code injection in the rule-preview expression evaluator."
+    }
+  ]
+}

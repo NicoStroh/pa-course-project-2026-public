@@ -1,0 +1,13 @@
+schema_version: "1.0"
+project:
+  id: "toy-rule-engine"
+  name: "Toy Rule Engine"
+vulnerability:
+  id: "toy-rule-engine-code-injection-001"
+  type: code_injection
+  file: "student/targets/toy_rule_engine/rule_engine/evaluator.py"
+  line: 11
+  function: "evaluate_discount"
+  trigger: "Provide a rule expression that performs a side effect before returning a number."
+validator:
+  path: "shared/toy_ground_truth/validators/public/toy-rule-engine-code-injection-001.py"

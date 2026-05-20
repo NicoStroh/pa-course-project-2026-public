@@ -1,0 +1,13 @@
+schema_version: "1.0"
+project:
+  id: "toy-note-server"
+  name: "Note Server"
+vulnerability:
+  id: "toy-note-server-path-traversal-001"
+  type: path_traversal
+  file: "student/targets/toy_note_server/note_server/files.py"
+  line: 12
+  function: "read_note"
+  trigger: "Pass ../secret.txt as the note name."
+validator:
+  path: "shared/toy_ground_truth/validators/public/toy-note-server-path-traversal-001.py"

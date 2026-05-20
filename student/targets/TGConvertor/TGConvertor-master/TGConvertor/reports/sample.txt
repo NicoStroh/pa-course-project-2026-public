@@ -1,0 +1,6 @@
+Conversion summary
+==================
+
+Format: telethon -> pyrogram
+Status: completed
+Entries converted: 1

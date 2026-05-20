@@ -1,0 +1,2 @@
+"""Minimal sqlite teaching target."""
+

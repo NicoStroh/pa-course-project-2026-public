@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pa-course-project.local/schemas/report.schema.json",
+  "title": "Program Analysis Course Project Report",
+  "type": "object",
+  "required": ["schema_version", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "target_id",
+        "vulnerability_type",
+        "location",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vulnerability_type": {
+          "type": "string",
+          "enum": [
+            "command_injection",
+            "code_injection",
+            "sql_injection",
+            "path_traversal",
+            "unsafe_deserialization"
+          ]
+        },
+        "location": {
+          "type": "object",
+          "required": ["path"],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "function": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "anyOf": [
+            {
+              "required": ["line"]
+            },
+            {
+              "required": ["function"]
+            }
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exploit": {
+          "type": "object",
+          "required": ["path", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^exploits/[^/].*"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["python", "shell", "other"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+"""Minimal pickle teaching target."""
+

@@ -1,0 +1,13 @@
+schema_version: "1.0"
+project:
+  id: "toy-command-runner"
+  name: "Toy Command Runner"
+vulnerability:
+  id: "toy-command-runner-command-injection-001"
+  type: command_injection
+  file: "student/targets/toy_command_runner/toybackup/runner.py"
+  line: 19
+  function: "run_backup_job"
+  trigger: "Pass a job name containing shell metacharacters."
+validator:
+  path: "shared/toy_ground_truth/validators/public/toy-command-runner-command-injection-001.py"

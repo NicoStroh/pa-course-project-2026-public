@@ -1,0 +1,13 @@
+schema_version: "1.0"
+project:
+  id: "toy-pickle-profile-loader"
+  name: "Pickle Profile Loader"
+vulnerability:
+  id: "toy-pickle-profile-loader-unsafe-deserialization-001"
+  type: unsafe_deserialization
+  file: "student/targets/toy_pickle_profile_loader/profile_loader/loader.py"
+  line: 13
+  function: "load_profile"
+  trigger: "Provide a pickle payload whose reducer creates the exploit marker."
+validator:
+  path: "shared/toy_ground_truth/validators/public/toy-pickle-profile-loader-unsafe-deserialization-001.py"

@@ -1,0 +1,13 @@
+schema_version: "1.0"
+project:
+  id: "toy-tiny-sql-app"
+  name: "Tiny SQL App"
+vulnerability:
+  id: "toy-tiny-sql-app-sql-injection-001"
+  type: sql_injection
+  file: "student/targets/toy_tiny_sql_app/tiny_sql_app/search.py"
+  line: 26
+  function: "search_customers"
+  trigger: "Pass a search term that closes the LIKE pattern and appends OR 1=1."
+validator:
+  path: "shared/toy_ground_truth/validators/public/toy-tiny-sql-app-sql-injection-001.py"
