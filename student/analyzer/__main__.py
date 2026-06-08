@@ -241,8 +241,36 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
 
+    @staticmethod
+    def _is_code_sink(func: ast.AST) -> bool:
+        return (
+            isinstance(func, ast.Name)
+            and func.id in {"eval", "exec"}
+        )
+
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Code injection detection
+
+        if not self._is_code_sink(node.func):
+            self.generic_visit(node)
+            return
+
+        if not node.args:
+            self.generic_visit(node)
+            return
+
+        first_arg = node.args[0]
+
+        if (
+            isinstance(first_arg, ast.Name)
+            and first_arg.id in self.tainted_variables
+        ):
+            self.findings.append(
+                {
+                    "type": "code_injection",
+                    "line": node.lineno,
+                }
+            )
+
         self.generic_visit(node)
 
 
@@ -302,8 +330,38 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
 
+    @staticmethod
+    def _is_pickle_sink(func: ast.AST) -> bool:
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr in {"load", "loads"}
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "pickle"
+        )
+
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Unsafe deserialization detection
+
+        if not self._is_pickle_sink(node.func):
+            self.generic_visit(node)
+            return
+
+        if not node.args:
+            self.generic_visit(node)
+            return
+
+        first_arg = node.args[0]
+
+        if (
+            isinstance(first_arg, ast.Name)
+            and first_arg.id in self.tainted_variables
+        ):
+            self.findings.append(
+                {
+                    "type": "unsafe_deserialization",
+                    "line": node.lineno,
+                }
+            )
+
         self.generic_visit(node)
 
 
