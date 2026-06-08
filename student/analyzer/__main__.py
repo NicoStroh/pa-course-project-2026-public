@@ -348,6 +348,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/source_and_taint_analyer_test.py"))
 
     print(findings)
