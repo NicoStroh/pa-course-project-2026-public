@@ -12,30 +12,50 @@ class SourceCollector(ast.NodeVisitor):
 
     Current scope:
     - sys.argv
-    - argparse
 
     TODO:
-    - Implement source detection logic.
+    - argparse support
+    - input()
+    - os.environ
     """
 
     def __init__(self) -> None:
-        self.sources: list[dict] = []
+        self.sources: list[ast.AST] = []
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        # TODO: Detect sys.argv[x]
+        """
+        Detect:
+
+            sys.argv[1]
+            sys.argv[2]
+            ...
+        """
+
+        if (
+            isinstance(node.value, ast.Attribute)
+            and node.value.attr == "argv"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "sys"
+        ):
+            self.sources.append(node)
+
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Detect argparse.ArgumentParser().parse_args()
+        # TODO: argparse.ArgumentParser().parse_args()
         self.generic_visit(node)
 
 
 class TaintAnalyzer(ast.NodeVisitor):
     """
-    Tracks tainted values through assignments and function calls.
+    Tracks tainted values through assignments.
+
+    Currently supports:
+
+        x = sys.argv[1]
+        y = x
 
     TODO:
-    - Assignment propagation
     - Function argument propagation
     - Return value propagation
     - Interprocedural analysis
@@ -44,12 +64,54 @@ class TaintAnalyzer(ast.NodeVisitor):
     def __init__(self) -> None:
         self.tainted_variables: set[str] = set()
 
+    @staticmethod
+    def _is_sys_argv(node: ast.AST) -> bool:
+        """
+        Detect:
+
+            sys.argv[1]
+        """
+
+        return (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "argv"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "sys"
+        )
+
     def visit_Assign(self, node: ast.Assign) -> None:
-        # TODO: Propagate taint
+
+        rhs_is_tainted = False
+
+        #
+        # Case 1:
+        #
+        #   x = sys.argv[1]
+        #
+        if self._is_sys_argv(node.value):
+            rhs_is_tainted = True
+
+        #
+        # Case 2:
+        #
+        #   y = x
+        #
+        elif (
+            isinstance(node.value, ast.Name)
+            and node.value.id in self.tainted_variables
+        ):
+            rhs_is_tainted = True
+
+        if rhs_is_tainted:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.tainted_variables.add(target.id)
+
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Propagate taint through calls
+        # TODO: Function taint propagation
         self.generic_visit(node)
 
 
@@ -284,4 +346,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    analyzer = TargetAnalyzer(Path("."))
+
+    findings = analyzer.analyze_file(Path("student/analyzer/test.py"))
+
+    print(findings)
