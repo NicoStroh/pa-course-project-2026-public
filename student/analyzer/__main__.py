@@ -136,8 +136,47 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
 
+    @staticmethod
+    def _is_os_system(func: ast.AST) -> bool:
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == "system"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "os"
+        )
+
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Command injection detection
+
+        #
+        # Is this an os.system(...) call?
+        #
+        if not self._is_os_system(node.func):
+            self.generic_visit(node)
+            return
+
+        #
+        # Does it have an argument?
+        #
+        if not node.args:
+            self.generic_visit(node)
+            return
+
+        first_arg = node.args[0]
+
+        #
+        # Is the argument a tainted variable?
+        #
+        if (
+            isinstance(first_arg, ast.Name)
+            and first_arg.id in self.tainted_variables
+        ):
+            self.findings.append(
+                {
+                    "type": "command_injection",
+                    "line": node.lineno,
+                }
+            )
+
         self.generic_visit(node)
 
 
@@ -348,6 +387,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/source_and_taint_analyer_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/command_injection_test.py"))
 
     print(findings)
