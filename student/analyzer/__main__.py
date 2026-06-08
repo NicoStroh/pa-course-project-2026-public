@@ -80,6 +80,36 @@ class TaintAnalyzer(ast.NodeVisitor):
             and node.value.value.id == "sys"
         )
 
+    def _joined_str_is_tainted(self, node: ast.JoinedStr) -> bool:
+        for value in node.values:
+
+            if not isinstance(value, ast.FormattedValue):
+                continue
+
+            if (
+                isinstance(value.value, ast.Name)
+                and value.value.id in self.tainted_variables
+            ):
+                return True
+
+        return False
+
+    def _binop_is_tainted(self, node: ast.BinOp) -> bool:
+
+        if (
+            isinstance(node.left, ast.Name)
+            and node.left.id in self.tainted_variables
+        ):
+            return True
+
+        if (
+            isinstance(node.right, ast.Name)
+            and node.right.id in self.tainted_variables
+        ):
+            return True
+
+        return False
+
     def visit_Assign(self, node: ast.Assign) -> None:
 
         rhs_is_tainted = False
@@ -100,6 +130,22 @@ class TaintAnalyzer(ast.NodeVisitor):
         elif (
             isinstance(node.value, ast.Name)
             and node.value.id in self.tainted_variables
+        ):
+            rhs_is_tainted = True
+
+        # Case 3:
+        # cmd = f"ls {user}"
+        elif (
+            isinstance(node.value, ast.JoinedStr)
+            and self._joined_str_is_tainted(node.value)
+        ):
+            rhs_is_tainted = True
+
+        # Case 4:
+        # cmd = "ls" + user
+        elif (
+            isinstance(node.value, ast.BinOp)
+            and self._binop_is_tainted(node.value)
         ):
             rhs_is_tainted = True
 
@@ -387,6 +433,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/command_injection_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/tainted_binop_string_test.py"))
 
     print(findings)
