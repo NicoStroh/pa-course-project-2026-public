@@ -173,35 +173,47 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
         self.findings: list[dict] = []
 
     @staticmethod
-    def _is_os_system(func: ast.AST) -> bool:
-        return (
-            isinstance(func, ast.Attribute)
-            and func.attr == "system"
-            and isinstance(func.value, ast.Name)
+    def _is_command_sink(func: ast.AST) -> bool:
+
+        if not isinstance(func, ast.Attribute):
+            return False
+
+        #
+        # os.system
+        # os.popen
+        #
+        if (
+            isinstance(func.value, ast.Name)
             and func.value.id == "os"
-        )
+            and func.attr in {"system", "popen"}
+        ):
+            return True
+
+        #
+        # subprocess.run
+        # subprocess.Popen
+        #
+        if (
+            isinstance(func.value, ast.Name)
+            and func.value.id == "subprocess"
+            and func.attr in {"run", "Popen"}
+        ):
+            return True
+
+        return False
 
     def visit_Call(self, node: ast.Call) -> None:
 
-        #
-        # Is this an os.system(...) call?
-        #
-        if not self._is_os_system(node.func):
+        if not self._is_command_sink(node.func):
             self.generic_visit(node)
             return
 
-        #
-        # Does it have an argument?
-        #
         if not node.args:
             self.generic_visit(node)
             return
 
         first_arg = node.args[0]
 
-        #
-        # Is the argument a tainted variable?
-        #
         if (
             isinstance(first_arg, ast.Name)
             and first_arg.id in self.tainted_variables
