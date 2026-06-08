@@ -476,6 +476,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/tainted_binop_string_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/code_injection_test.py"))
 
     print(findings)
