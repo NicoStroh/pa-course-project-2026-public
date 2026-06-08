@@ -12,11 +12,6 @@ class SourceCollector(ast.NodeVisitor):
 
     Current scope:
     - sys.argv
-
-    TODO:
-    - argparse support
-    - input()
-    - os.environ
     """
 
     def __init__(self) -> None:
@@ -42,7 +37,6 @@ class SourceCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: argparse.ArgumentParser().parse_args()
         self.generic_visit(node)
 
 
@@ -54,6 +48,8 @@ class TaintAnalyzer(ast.NodeVisitor):
 
         x = sys.argv[1]
         y = x
+        y = f"ls {x}"
+        y = "ls " + x
 
     TODO:
     - Function argument propagation
@@ -169,13 +165,7 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
     - os.system
     - os.popen
     - subprocess.run
-    - subprocess.call
     - subprocess.Popen
-    - subprocess.check_output
-
-    TODO:
-    - Implement sink detection
-    - Verify tainted flow reaches sink
     """
 
     def __init__(self, tainted_variables: set[str]) -> None:
@@ -233,11 +223,6 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
     Sinks:
     - eval
     - exec
-    - compile
-
-    TODO:
-    - Implement sink detection
-    - Verify tainted flow reaches sink
     """
 
     def __init__(self, tainted_variables: set[str]) -> None:
@@ -254,8 +239,8 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
     Detects tainted data reaching SQL execution sinks.
 
     Sinks:
-    - cursor.execute
-    - cursor.executemany
+    - execute
+    - executescript
 
     TODO:
     - Implement sink detection
@@ -278,14 +263,9 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
 
     Sinks:
     - open
+    - os.open
     - Path.open
     - Path.read_text
-    - Path.write_text
-    - os.open
-
-    TODO:
-    - Implement sink detection
-    - Verify tainted flow reaches sink
     """
 
     def __init__(self, tainted_variables: set[str]) -> None:
@@ -304,13 +284,6 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
     Sinks:
     - pickle.load
     - pickle.loads
-    - dill.load
-    - dill.loads
-    - yaml.load
-
-    TODO:
-    - Implement sink detection
-    - Verify tainted flow reaches sink
     """
 
     def __init__(self, tainted_variables: set[str]) -> None:
