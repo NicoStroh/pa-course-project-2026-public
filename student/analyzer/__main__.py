@@ -338,6 +338,10 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
 
+        if not node.args:
+            self.generic_visit(node)
+            return
+
         if self._is_sql_sink(node.func):
 
             first_arg = node.args[0]
@@ -348,7 +352,7 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
             ):
                 self.findings.append(
                     {
-                        "type": "sql_sink",
+                        "type": "sql_injection",
                         "line": node.lineno,
                     }
                 )
