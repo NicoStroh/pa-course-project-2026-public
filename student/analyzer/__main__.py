@@ -37,6 +37,18 @@ class SourceCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        """
+        Detect:
+
+            parser.parse_args()
+        """
+
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "parse_args"
+        ):
+            self.sources.append(node)
+
         self.generic_visit(node)
 
 
