@@ -276,24 +276,50 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
 
 class SqlInjectionAnalyzer(ast.NodeVisitor):
     """
-    Detects tainted data reaching SQL execution sinks.
+    Detects SQL execution sinks.
 
     Sinks:
     - execute
+    - executemany
     - executescript
 
     TODO:
-    - Implement sink detection
-    - Detect string-built SQL queries
     - Verify tainted flow reaches sink
+    - Detect string-built SQL queries
     """
 
     def __init__(self, tainted_variables: set[str]) -> None:
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
 
+    @staticmethod
+    def _is_sql_sink(func: ast.AST) -> bool:
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr in {
+                "execute",
+                "executemany",
+                "executescript",
+            }
+        )
+
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: SQL injection detection
+
+        if self._is_sql_sink(node.func):
+
+            first_arg = node.args[0]
+
+            if (
+                isinstance(first_arg, ast.Name)
+                and first_arg.id in self.tainted_variables
+            ):
+                self.findings.append(
+                    {
+                        "type": "sql_sink",
+                        "line": node.lineno,
+                    }
+                )
+
         self.generic_visit(node)
 
 
@@ -476,6 +502,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/code_injection_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/sql_injection_test.py"))
 
     print(findings)
