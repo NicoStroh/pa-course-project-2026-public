@@ -371,8 +371,57 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
 
+    @staticmethod
+    def _is_path_sink(func: ast.AST) -> bool:
+
+        if (
+            isinstance(func, ast.Name)
+            and func.id == "open"
+        ):
+            return True
+
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "open"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "os"
+        ):
+            return True
+
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr in {
+                "open",
+                "read_text",
+            }
+        ):
+            return True
+
+        return False
+
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Path traversal detection
+
+        if not self._is_path_sink(node.func):
+            self.generic_visit(node)
+            return
+
+        if not node.args:
+            self.generic_visit(node)
+            return
+
+        first_arg = node.args[0]
+
+        if (
+            isinstance(first_arg, ast.Name)
+            and first_arg.id in self.tainted_variables
+        ):
+            self.findings.append(
+                {
+                    "type": "path_traversal",
+                    "line": node.lineno,
+                }
+            )
+
         self.generic_visit(node)
 
 
@@ -535,6 +584,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/source_and_taint_analyzer_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/path_traversal_test.py"))
 
     print(findings)
