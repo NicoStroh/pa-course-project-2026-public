@@ -8,12 +8,17 @@
    SQL injection: `execute`, `executescript`
    path traversal: `open`, `os.open`, `pathlib.Path.open`, `pathlib.Path.read_text`
 
+////// Diese Woche
+
 - unterschied sourceanalyzer und taintedanalyzer?
 - funktioniert sink detection korrekt?
 
 5. function call tainted propagation
 6. Source-to-Sink Analysis
-7. Generate Security Report
+   //////
+
+7. Refactoring
+8. Generate Security Report
 
 Questions:
 
