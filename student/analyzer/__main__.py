@@ -6,52 +6,6 @@ import json
 from pathlib import Path
 
 
-class SourceCollector(ast.NodeVisitor):
-    """
-    Finds attacker-controlled inputs.
-
-    Current scope:
-    - sys.argv
-    """
-
-    def __init__(self) -> None:
-        self.sources: list[ast.AST] = []
-
-    def visit_Subscript(self, node: ast.Subscript) -> None:
-        """
-        Detect:
-
-            sys.argv[1]
-            sys.argv[2]
-            ...
-        """
-
-        if (
-            isinstance(node.value, ast.Attribute)
-            and node.value.attr == "argv"
-            and isinstance(node.value.value, ast.Name)
-            and node.value.value.id == "sys"
-        ):
-            self.sources.append(node)
-
-        self.generic_visit(node)
-
-    def visit_Call(self, node: ast.Call) -> None:
-        """
-        Detect:
-
-            parser.parse_args()
-        """
-
-        if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "parse_args"
-        ):
-            self.sources.append(node)
-
-        self.generic_visit(node)
-
-
 class TaintAnalyzer(ast.NodeVisitor):
     """
     Tracks tainted values through assignments.
@@ -155,7 +109,10 @@ class TaintAnalyzer(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
 
-        if self._expression_is_tainted(node.value):
+        if TaintAnalyzer.expression_is_tainted(
+            node.value,
+            self.tainted_variables,
+        ):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.tainted_variables.add(target.id)
@@ -214,17 +171,20 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
 
-        if not self._is_command_sink(node.func):
+        if not node.args:
             self.generic_visit(node)
             return
 
-        if not node.args:
+        if not self._is_command_sink(node.func):
             self.generic_visit(node)
             return
 
         first_arg = node.args[0]
 
-        if taint_analyzer._expression_is_tainted(first_arg):
+        if TaintAnalyzer.expression_is_tainted(
+            first_arg,
+            self.tainted_variables,
+        ):
             self.findings.append(
                 {
                     "type": "command_injection",
@@ -257,17 +217,21 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
 
-        if not self._is_code_sink(node.func):
-            self.generic_visit(node)
-            return
 
         if not node.args:
+            self.generic_visit(node)
+            return
+        
+        if not self._is_code_sink(node.func):
             self.generic_visit(node)
             return
 
         first_arg = node.args[0]
 
-        if taint_analyzer._expression_is_tainted(first_arg):
+        if TaintAnalyzer.expression_is_tainted(
+            first_arg,
+            self.tainted_variables,
+        ):
             self.findings.append(
                 {
                     "type": "code_injection",
@@ -317,7 +281,10 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
 
             first_arg = node.args[0]
 
-            if taint_analyzer._expression_is_tainted(first_arg):
+            if TaintAnalyzer.expression_is_tainted(
+                first_arg,
+                self.tainted_variables,
+            ):
                 self.findings.append(
                     {
                         "type": "sql_injection",
@@ -391,8 +358,11 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        return taint_analyzer._expression_is_tainted(first_arg)
-    
+        return TaintAnalyzer.expression_is_tainted(
+            first_arg,
+            self.tainted_variables,
+        )
+
     def visit_Assign(self, node: ast.Assign) -> None:
 
         #
@@ -406,7 +376,10 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
         ):
             first_arg = node.value.args[0]
 
-            if taint_analyzer._expression_is_tainted(first_arg):
+            if TaintAnalyzer.expression_is_tainted(
+                first_arg,
+                self.tainted_variables,
+            ):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         self.tainted_paths.add(target.id)
@@ -443,7 +416,10 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
             if node.args:
                 first_arg = node.args[0]
 
-                if taint_analyzer._expression_is_tainted(first_arg):
+                if TaintAnalyzer.expression_is_tainted(
+                    first_arg,
+                    self.tainted_variables,
+                ):
                     self.findings.append(
                         {
                             "type": "path_traversal",
@@ -516,17 +492,20 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
 
-        if not self._is_pickle_sink(node.func):
+        if not node.args:
             self.generic_visit(node)
             return
-
-        if not node.args:
+        
+        if not self._is_pickle_sink(node.func):
             self.generic_visit(node)
             return
 
         first_arg = node.args[0]
 
-        if taint_analyzer._expression_is_tainted(first_arg):
+        if TaintAnalyzer.expression_is_tainted(
+            first_arg,
+            self.tainted_variables,
+        ):
             self.findings.append(
                 {
                     "type": "unsafe_deserialization",
@@ -559,9 +538,6 @@ class TargetAnalyzer:
 
     def analyze_file(self, file_path: Path) -> list[dict]:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
-
-        source_collector = SourceCollector()
-        source_collector.visit(tree)
 
         taint_analyzer = TaintAnalyzer()
         taint_analyzer.visit(tree)
