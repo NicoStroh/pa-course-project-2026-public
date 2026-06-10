@@ -370,6 +370,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
     def __init__(self, tainted_variables: set[str]) -> None:
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
+        self.tainted_paths: set[str] = set()
 
     @staticmethod
     def _is_path_sink(func: ast.AST) -> bool:
@@ -398,29 +399,121 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
             return True
 
         return False
+    
+    def _path_constructor_uses_tainted_data(
+        self,
+        node: ast.AST,
+    ) -> bool:
 
-    def visit_Call(self, node: ast.Call) -> None:
+        if not isinstance(node, ast.Call):
+            return False
 
-        if not self._is_path_sink(node.func):
-            self.generic_visit(node)
-            return
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "Path"
+        ):
+            return False
 
         if not node.args:
-            self.generic_visit(node)
-            return
+            return False
 
         first_arg = node.args[0]
 
-        if (
+        return (
             isinstance(first_arg, ast.Name)
             and first_arg.id in self.tainted_variables
+        )
+    
+    def visit_Assign(self, node: ast.Assign) -> None:
+
+        #
+        # path = Path(filename)
+        #
+        if (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "Path"
+            and node.value.args
         ):
-            self.findings.append(
-                {
-                    "type": "path_traversal",
-                    "line": node.lineno,
-                }
-            )
+            first_arg = node.value.args[0]
+
+            if (
+                isinstance(first_arg, ast.Name)
+                and first_arg.id in self.tainted_variables
+            ):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        self.tainted_paths.add(target.id)
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+
+        #
+        # open(filename)
+        # os.open(filename, ...)
+        #
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "open"
+        ) or (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "open"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
+        ):
+
+            if node.args:
+                first_arg = node.args[0]
+
+                if (
+                    isinstance(first_arg, ast.Name)
+                    and first_arg.id in self.tainted_variables
+                ):
+                    self.findings.append(
+                        {
+                            "type": "path_traversal",
+                            "line": node.lineno,
+                        }
+                    )
+
+        #
+        # path.open()
+        # path.read_text()
+        #
+        elif (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"open", "read_text"}
+        ):
+
+            #
+            # path = Path(filename)
+            # path.read_text()
+            #
+            if (
+                isinstance(node.func.value, ast.Name)
+                and node.func.value.id in self.tainted_paths
+            ):
+                self.findings.append(
+                    {
+                        "type": "path_traversal",
+                        "line": node.lineno,
+                    }
+                )
+
+            #
+            # Path(filename).read_text()
+            # Path(filename).open()
+            #
+            elif self._path_constructor_uses_tainted_data(
+                node.func.value
+            ):
+                self.findings.append(
+                    {
+                        "type": "path_traversal",
+                        "line": node.lineno,
+                    }
+                )
 
         self.generic_visit(node)
 
