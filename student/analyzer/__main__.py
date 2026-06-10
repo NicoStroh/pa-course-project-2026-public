@@ -73,112 +73,89 @@ class TaintAnalyzer(ast.NodeVisitor):
         self.tainted_variables: set[str] = set()
 
     @staticmethod
-    def _is_sys_argv(node: ast.AST) -> bool:
-        """
-        Detect:
+    def expression_is_tainted(
+        node: ast.AST,
+        tainted_variables: set[str],
+    ) -> bool:
 
-            sys.argv[1]
-        """
+        #
+        # variable
+        #
+        if isinstance(node, ast.Name):
+            return node.id in tainted_variables
 
-        return (
+        #
+        # sys.argv[1]
+        #
+        if (
             isinstance(node, ast.Subscript)
             and isinstance(node.value, ast.Attribute)
             and node.value.attr == "argv"
             and isinstance(node.value.value, ast.Name)
             and node.value.value.id == "sys"
-        )
-    
-    @staticmethod
-    def _is_parse_args(node: ast.AST) -> bool:
-        return (
+        ):
+            return True
+
+        #
+        # parser.parse_args()
+        #
+        if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "parse_args"
-        )
-
-    def _joined_str_is_tainted(self, node: ast.JoinedStr) -> bool:
-        for value in node.values:
-
-            if not isinstance(value, ast.FormattedValue):
-                continue
-
-            if (
-                isinstance(value.value, ast.Name)
-                and value.value.id in self.tainted_variables
-            ):
-                return True
-
-        return False
-
-    def _binop_is_tainted(self, node: ast.BinOp) -> bool:
-
-        if (
-            isinstance(node.left, ast.Name)
-            and node.left.id in self.tainted_variables
         ):
             return True
 
+        #
+        # args.term
+        #
         if (
-            isinstance(node.right, ast.Name)
-            and node.right.id in self.tainted_variables
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in tainted_variables
         ):
             return True
+
+        #
+        # f"...{user}..."
+        #
+        if isinstance(node, ast.JoinedStr):
+
+            for value in node.values:
+
+                if (
+                    isinstance(value, ast.FormattedValue)
+                    and TaintAnalyzer.expression_is_tainted(
+                        value.value,
+                        tainted_variables,
+                    )
+                ):
+                    return True
+
+            return False
+
+        #
+        # "abc" + user
+        #
+        if isinstance(node, ast.BinOp):
+
+            return (
+                TaintAnalyzer.expression_is_tainted(
+                    node.left,
+                    tainted_variables,
+                )
+                or
+                TaintAnalyzer.expression_is_tainted(
+                    node.right,
+                    tainted_variables,
+                )
+            )
 
         return False
 
     def visit_Assign(self, node: ast.Assign) -> None:
 
-        rhs_is_tainted = False
-
-        #
-        # Case 1:
-        #
-        #   x = sys.argv[1]
-        #
-        if self._is_sys_argv(node.value):
-            rhs_is_tainted = True
-
-        #
-        # Case 2:
-        #
-        #   y = x
-        #
-        elif (
-            isinstance(node.value, ast.Name)
-            and node.value.id in self.tainted_variables
-        ):
-            rhs_is_tainted = True
-
-        # Case 3:
-        # cmd = f"ls {user}"
-        elif (
-            isinstance(node.value, ast.JoinedStr)
-            and self._joined_str_is_tainted(node.value)
-        ):
-            rhs_is_tainted = True
-
-        # Case 4:
-        # cmd = "ls" + user
-        elif (
-            isinstance(node.value, ast.BinOp)
-            and self._binop_is_tainted(node.value)
-        ):
-            rhs_is_tainted = True
-
-        #
-        # args = parser.parse_args()
-        #
-        elif self._is_parse_args(node.value):
-            rhs_is_tainted = True
-
-        elif (
-            isinstance(node.value, ast.Attribute)
-            and isinstance(node.value.value, ast.Name)
-            and node.value.value.id in self.tainted_variables
-        ):
-            rhs_is_tainted = True
-
-        if rhs_is_tainted:
+        if self._expression_is_tainted(node.value):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.tainted_variables.add(target.id)
@@ -247,10 +224,7 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        if (
-            isinstance(first_arg, ast.Name)
-            and first_arg.id in self.tainted_variables
-        ):
+        if taint_analyzer._expression_is_tainted(first_arg):
             self.findings.append(
                 {
                     "type": "command_injection",
@@ -293,10 +267,7 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        if (
-            isinstance(first_arg, ast.Name)
-            and first_arg.id in self.tainted_variables
-        ):
+        if taint_analyzer._expression_is_tainted(first_arg):
             self.findings.append(
                 {
                     "type": "code_injection",
@@ -346,10 +317,7 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
 
             first_arg = node.args[0]
 
-            if (
-                isinstance(first_arg, ast.Name)
-                and first_arg.id in self.tainted_variables
-            ):
+            if taint_analyzer._expression_is_tainted(first_arg):
                 self.findings.append(
                     {
                         "type": "sql_injection",
@@ -423,10 +391,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        return (
-            isinstance(first_arg, ast.Name)
-            and first_arg.id in self.tainted_variables
-        )
+        return taint_analyzer._expression_is_tainted(first_arg)
     
     def visit_Assign(self, node: ast.Assign) -> None:
 
@@ -441,10 +406,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
         ):
             first_arg = node.value.args[0]
 
-            if (
-                isinstance(first_arg, ast.Name)
-                and first_arg.id in self.tainted_variables
-            ):
+            if taint_analyzer._expression_is_tainted(first_arg):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         self.tainted_paths.add(target.id)
@@ -481,10 +443,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
             if node.args:
                 first_arg = node.args[0]
 
-                if (
-                    isinstance(first_arg, ast.Name)
-                    and first_arg.id in self.tainted_variables
-                ):
+                if taint_analyzer._expression_is_tainted(first_arg):
                     self.findings.append(
                         {
                             "type": "path_traversal",
@@ -567,10 +526,7 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        if (
-            isinstance(first_arg, ast.Name)
-            and first_arg.id in self.tainted_variables
-        ):
+        if taint_analyzer._expression_is_tainted(first_arg):
             self.findings.append(
                 {
                     "type": "unsafe_deserialization",
