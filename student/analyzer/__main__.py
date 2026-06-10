@@ -449,6 +449,17 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
                     if isinstance(target, ast.Name):
                         self.tainted_paths.add(target.id)
 
+        #
+        # other = path
+        #
+        if isinstance(node.value, ast.Name):
+
+            if node.value.id in self.tainted_paths:
+
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        self.tainted_paths.add(target.id)
+
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
