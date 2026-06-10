@@ -87,6 +87,14 @@ class TaintAnalyzer(ast.NodeVisitor):
             and isinstance(node.value.value, ast.Name)
             and node.value.value.id == "sys"
         )
+    
+    @staticmethod
+    def _is_parse_args(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "parse_args"
+        )
 
     def _joined_str_is_tainted(self, node: ast.JoinedStr) -> bool:
         for value in node.values:
@@ -154,6 +162,19 @@ class TaintAnalyzer(ast.NodeVisitor):
         elif (
             isinstance(node.value, ast.BinOp)
             and self._binop_is_tainted(node.value)
+        ):
+            rhs_is_tainted = True
+
+        #
+        # args = parser.parse_args()
+        #
+        elif self._is_parse_args(node.value):
+            rhs_is_tainted = True
+
+        elif (
+            isinstance(node.value, ast.Attribute)
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id in self.tainted_variables
         ):
             rhs_is_tainted = True
 
@@ -514,6 +535,6 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/sql_injection_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/source_and_taint_analyzer_test.py"))
 
     print(findings)
