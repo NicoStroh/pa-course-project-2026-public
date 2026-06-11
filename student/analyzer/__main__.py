@@ -6,6 +6,100 @@ import json
 from pathlib import Path
 
 
+class CrossFileAnalyzer:
+    """Builds global function summaries across all Python files in a target directory."""
+
+    def __init__(self, target_root: Path) -> None:
+        self.target_root = target_root
+        self.module_asts: dict[str, ast.Module] = {}
+        self.all_function_defs: dict[str, ast.FunctionDef] = {}
+        self.global_summaries: dict[str, FunctionSummary] = {}
+
+    def load_all_modules(self) -> None:
+        """Parse all .py files in the target directory."""
+        for py_file in self.target_root.rglob("*.py"):
+            try:
+                module_name = py_file.stem
+                text = py_file.read_text(encoding="utf-8")
+                tree = ast.parse(text)
+                self.module_asts[module_name] = tree
+
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.FunctionDef):
+                        self.all_function_defs[node.name] = node
+            except Exception:
+                pass
+
+    def compute_global_summaries(self) -> None:
+        """Compute function summaries across all modules using fixed-point iteration."""
+        self.global_summaries = {
+            name: FunctionSummary(
+                name,
+                [
+                    arg.arg
+                    for arg in (
+                        node.args.posonlyargs
+                        + node.args.args
+                        + node.args.kwonlyargs
+                    )
+                ],
+            )
+            for name, node in self.all_function_defs.items()
+        }
+
+        changed = True
+
+        while changed:
+            changed = False
+
+            for name, node in self.all_function_defs.items():
+                summary = self.global_summaries[name]
+                new_summary = FunctionSummary(
+                    name,
+                    summary.parameter_names,
+                )
+
+                new_summary.return_tainted_independent = (
+                    self._function_returns_tainted(
+                        node,
+                        set(),
+                    )
+                )
+
+                for parameter_name in summary.parameter_names:
+                    if self._function_returns_tainted(
+                        node,
+                        {parameter_name},
+                    ):
+                        new_summary.return_tainted_from_parameters.add(
+                            parameter_name,
+                        )
+
+                if (
+                    new_summary.return_tainted_independent
+                    != summary.return_tainted_independent
+                    or new_summary.return_tainted_from_parameters
+                    != summary.return_tainted_from_parameters
+                ):
+                    self.global_summaries[name] = new_summary
+                    changed = True
+
+    def _function_returns_tainted(
+        self,
+        node: ast.FunctionDef,
+        tainted_parameters: set[str],
+    ) -> bool:
+        analyzer = FunctionSummaryAnalyzer(
+            set(tainted_parameters),
+            self.global_summaries,
+        )
+
+        for statement in node.body:
+            analyzer.visit(statement)
+
+        return analyzer.return_tainted
+
+
 class FunctionSummary:
     def __init__(
         self,
@@ -173,26 +267,25 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
 
 class TaintAnalyzer(ast.NodeVisitor):
     """
-    Tracks tainted values through assignments.
+    Tracks tainted values through assignments with support for interprocedural propagation.
 
-    Currently supports:
-
-        x = sys.argv[1]
-        y = x
-        y = f"ls {x}"
-        y = "ls " + x
-        y = foo(x)
-
-    TODO:
-    - Function argument propagation
-    - Return value propagation
-    - Interprocedural analysis
+    Supports:
+    - x = sys.argv[1]
+    - y = x
+    - y = f"ls {x}"
+    - y = "ls " + x
+    - y = foo(x)
+    - Cross-file function summaries
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        function_defs: dict[str, ast.FunctionDef] | None = None,
+        function_summaries: dict[str, FunctionSummary] | None = None,
+    ) -> None:
         self.tainted_variables: set[str] = set()
-        self.function_defs: dict[str, ast.FunctionDef] = {}
-        self.function_summaries: dict[str, FunctionSummary] = {}
+        self.function_defs: dict[str, ast.FunctionDef] = function_defs or {}
+        self.function_summaries: dict[str, FunctionSummary] = function_summaries or {}
 
     @staticmethod
     def _call_argument_taints(
@@ -331,12 +424,15 @@ class TaintAnalyzer(ast.NodeVisitor):
         return False
 
     def visit_Module(self, node: ast.Module) -> None:
+        # Collect local function definitions
         for statement in node.body:
             if isinstance(statement, ast.FunctionDef):
                 self.function_defs[statement.name] = statement
 
+        # Compute local function summaries (may override pre-existing ones)
         self._compute_function_summaries()
 
+        # Analyze module-level code
         for statement in node.body:
             if not isinstance(statement, ast.FunctionDef):
                 self.visit(statement)
@@ -816,31 +912,58 @@ class TargetAnalyzer:
 
     Flow:
 
-        Parse AST
+        Load all Python files
             ↓
-        Collect Sources
+        Compute global function summaries
             ↓
-        Perform Taint Analysis
-            ↓
-        Run Vulnerability Analyses
-            ↓
-        Generate Findings
+        For each file:
+            Parse AST
+                ↓
+            Perform Taint Analysis (with global summaries)
+                ↓
+            Run Vulnerability Analyses
+                ↓
+            Generate Findings
     """
 
     def __init__(self, target_root: Path) -> None:
         self.target_root = target_root
+        self.cross_file_analyzer = CrossFileAnalyzer(target_root)
+        self.cross_file_analyzer.load_all_modules()
+        self.cross_file_analyzer.compute_global_summaries()
 
     def analyze_file(self, file_path: Path) -> list[dict]:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
 
-        taint_analyzer = TaintAnalyzer()
+        # Collect local function definitions from this file
+        local_function_defs: dict[str, ast.FunctionDef] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                local_function_defs[node.name] = node
+
+        # Merge global and local function definitions
+        merged_function_defs = {
+            **self.cross_file_analyzer.all_function_defs,
+            **local_function_defs,
+        }
+
+        # Merge global and local summaries
+        merged_summaries = {
+            **self.cross_file_analyzer.global_summaries,
+        }
+
+        # Compute local-file summaries (may override global ones)
+        taint_analyzer = TaintAnalyzer(
+            merged_function_defs,
+            merged_summaries,
+        )
         taint_analyzer.visit(tree)
 
         findings: list[dict] = []
 
         command_analyzer = CommandInjectionAnalyzer(
             taint_analyzer.tainted_variables,
-            taint_analyzer.function_defs,
+            merged_function_defs,
             taint_analyzer.function_summaries,
         )
         command_analyzer.visit(tree)
@@ -848,7 +971,7 @@ class TargetAnalyzer:
 
         code_analyzer = CodeInjectionAnalyzer(
             taint_analyzer.tainted_variables,
-            taint_analyzer.function_defs,
+            merged_function_defs,
             taint_analyzer.function_summaries,
         )
         code_analyzer.visit(tree)
@@ -856,7 +979,7 @@ class TargetAnalyzer:
 
         sql_analyzer = SqlInjectionAnalyzer(
             taint_analyzer.tainted_variables,
-            taint_analyzer.function_defs,
+            merged_function_defs,
             taint_analyzer.function_summaries,
         )
         sql_analyzer.visit(tree)
@@ -864,7 +987,7 @@ class TargetAnalyzer:
 
         path_analyzer = PathTraversalAnalyzer(
             taint_analyzer.tainted_variables,
-            taint_analyzer.function_defs,
+            merged_function_defs,
             taint_analyzer.function_summaries,
         )
         path_analyzer.visit(tree)
@@ -872,7 +995,7 @@ class TargetAnalyzer:
 
         deserialization_analyzer = UnsafeDeserializationAnalyzer(
             taint_analyzer.tainted_variables,
-            taint_analyzer.function_defs,
+            merged_function_defs,
             taint_analyzer.function_summaries,
         )
         deserialization_analyzer.visit(tree)
@@ -997,7 +1120,7 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/function_propagation_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/cross_file_import_test.py"))
 
     for finding in findings:
         print(finding)
