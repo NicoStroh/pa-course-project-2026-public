@@ -6,6 +6,171 @@ import json
 from pathlib import Path
 
 
+class FunctionSummary:
+    def __init__(
+        self,
+        name: str,
+        parameter_names: list[str],
+    ) -> None:
+        self.name = name
+        self.parameter_names = parameter_names
+        self.return_tainted_independent: bool = False
+        self.return_tainted_from_parameters: set[str] = set()
+
+    def returns_tainted(
+        self,
+        argument_taints: list[bool],
+    ) -> bool:
+        if self.return_tainted_independent:
+            return True
+
+        for parameter_name, argument_taint in zip(
+            self.parameter_names,
+            argument_taints,
+        ):
+            if argument_taint and parameter_name in self.return_tainted_from_parameters:
+                return True
+
+        return False
+
+
+class FunctionSummaryAnalyzer(ast.NodeVisitor):
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        self.tainted_variables = set(tainted_variables)
+        self.function_summaries = function_summaries
+        self.return_tainted: bool = False
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if TaintAnalyzer.expression_is_tainted(
+            node.value,
+            self.tainted_variables,
+            self.function_summaries,
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.tainted_variables.add(target.id)
+
+        self.generic_visit(node)
+
+    def visit_Return(self, node: ast.Return) -> None:
+        if node.value is not None and TaintAnalyzer.expression_is_tainted(
+            node.value,
+            self.tainted_variables,
+            self.function_summaries,
+        ):
+            self.return_tainted = True
+
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        # Do not analyze nested functions when summarizing the outer function.
+        return None
+
+
+class ScopeAwareAnalyzer(ast.NodeVisitor):
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        self.function_defs = function_defs
+        self.function_summaries = function_summaries
+        self.tainted_variables_stack: list[set[str]] = [set(tainted_variables)]
+        self._call_stack: list[str] = []
+
+    @property
+    def tainted_variables(self) -> set[str]:
+        return self.tainted_variables_stack[-1]
+
+    def push_scope(
+        self,
+        tainted_parameters: dict[str, bool] | None = None,
+    ) -> None:
+        local_taints: set[str] = set()
+
+        if tainted_parameters is not None:
+            local_taints.update(
+                name
+                for name, is_tainted in tainted_parameters.items()
+                if is_tainted
+            )
+
+        self.tainted_variables_stack.append(local_taints)
+
+    def pop_scope(self) -> None:
+        self.tainted_variables_stack.pop()
+
+    def expression_is_tainted(self, node: ast.AST) -> bool:
+        return TaintAnalyzer.expression_is_tainted(
+            node,
+            self.tainted_variables,
+            self.function_summaries,
+        )
+
+    def visit_Module(self, node: ast.Module) -> None:
+        for statement in node.body:
+            if not isinstance(statement, ast.FunctionDef):
+                self.visit(statement)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        # User-defined functions are analyzed at call sites.
+        return None
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if TaintAnalyzer.expression_is_tainted(
+            node.value,
+            self.tainted_variables,
+            self.function_summaries,
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.tainted_variables.add(target.id)
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in self.function_defs
+            and node.func.id not in self._call_stack
+        ):
+            function_name = node.func.id
+            function_def = self.function_defs[function_name]
+            parameter_names = [
+                arg.arg
+                for arg in (
+                    function_def.args.posonlyargs
+                    + function_def.args.args
+                    + function_def.args.kwonlyargs
+                )
+            ]
+
+            argument_taints = TaintAnalyzer._call_argument_taints(
+                node,
+                parameter_names,
+                self.tainted_variables,
+                self.function_summaries,
+            )
+
+            self._call_stack.append(function_name)
+            self.push_scope(
+                dict(zip(parameter_names, argument_taints))
+            )
+
+            for statement in function_def.body:
+                self.visit(statement)
+
+            self.pop_scope()
+            self._call_stack.pop()
+
+        self.generic_visit(node)
+
+
 class TaintAnalyzer(ast.NodeVisitor):
     """
     Tracks tainted values through assignments.
@@ -16,6 +181,7 @@ class TaintAnalyzer(ast.NodeVisitor):
         y = x
         y = f"ls {x}"
         y = "ls " + x
+        y = foo(x)
 
     TODO:
     - Function argument propagation
@@ -25,11 +191,46 @@ class TaintAnalyzer(ast.NodeVisitor):
 
     def __init__(self) -> None:
         self.tainted_variables: set[str] = set()
+        self.function_defs: dict[str, ast.FunctionDef] = {}
+        self.function_summaries: dict[str, FunctionSummary] = {}
+
+    @staticmethod
+    def _call_argument_taints(
+        node: ast.Call,
+        parameter_names: list[str],
+        tainted_variables: set[str],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> list[bool]:
+        argument_taints = [False] * len(parameter_names)
+
+        for index, argument in enumerate(node.args):
+            if index < len(parameter_names):
+                argument_taints[index] = TaintAnalyzer.expression_is_tainted(
+                    argument,
+                    tainted_variables,
+                    function_summaries,
+                )
+
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                continue
+
+            if keyword.arg in parameter_names:
+                argument_taints[parameter_names.index(keyword.arg)] = (
+                    TaintAnalyzer.expression_is_tainted(
+                        keyword.value,
+                        tainted_variables,
+                        function_summaries,
+                    )
+                )
+
+        return argument_taints
 
     @staticmethod
     def expression_is_tainted(
         node: ast.AST,
         tainted_variables: set[str],
+        function_summaries: dict[str, FunctionSummary] | None = None,
     ) -> bool:
 
         #
@@ -61,12 +262,32 @@ class TaintAnalyzer(ast.NodeVisitor):
             return True
 
         #
+        # function call
+        #
+        if isinstance(node, ast.Call):
+            if (
+                function_summaries is not None
+                and isinstance(node.func, ast.Name)
+                and node.func.id in function_summaries
+            ):
+                summary = function_summaries[node.func.id]
+                return summary.returns_tainted(
+                    TaintAnalyzer._call_argument_taints(
+                        node,
+                        summary.parameter_names,
+                        tainted_variables,
+                        function_summaries,
+                    )
+                )
+
+        #
         # args.term
         #
         if isinstance(node, ast.Attribute):
             return TaintAnalyzer.expression_is_tainted(
                 node.value,
                 tainted_variables,
+                function_summaries,
             )
 
         #
@@ -81,6 +302,7 @@ class TaintAnalyzer(ast.NodeVisitor):
                     and TaintAnalyzer.expression_is_tainted(
                         value.value,
                         tainted_variables,
+                        function_summaries,
                     )
                 ):
                     return True
@@ -96,21 +318,105 @@ class TaintAnalyzer(ast.NodeVisitor):
                 TaintAnalyzer.expression_is_tainted(
                     node.left,
                     tainted_variables,
+                    function_summaries,
                 )
                 or
                 TaintAnalyzer.expression_is_tainted(
                     node.right,
                     tainted_variables,
+                    function_summaries,
                 )
             )
 
         return False
+
+    def visit_Module(self, node: ast.Module) -> None:
+        for statement in node.body:
+            if isinstance(statement, ast.FunctionDef):
+                self.function_defs[statement.name] = statement
+
+        self._compute_function_summaries()
+
+        for statement in node.body:
+            if not isinstance(statement, ast.FunctionDef):
+                self.visit(statement)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        # Function bodies are analyzed through summaries, not as module-level statements.
+        return None
+
+    def _compute_function_summaries(self) -> None:
+        self.function_summaries = {
+            name: FunctionSummary(
+                name,
+                [
+                    arg.arg
+                    for arg in (
+                        node.args.posonlyargs
+                        + node.args.args
+                        + node.args.kwonlyargs
+                    )
+                ],
+            )
+            for name, node in self.function_defs.items()
+        }
+
+        changed = True
+
+        while changed:
+            changed = False
+
+            for name, node in self.function_defs.items():
+                summary = self.function_summaries[name]
+                new_summary = FunctionSummary(
+                    name,
+                    summary.parameter_names,
+                )
+
+                new_summary.return_tainted_independent = self._function_returns_tainted(
+                    node,
+                    set(),
+                )
+
+                for parameter_name in summary.parameter_names:
+                    if self._function_returns_tainted(
+                        node,
+                        {parameter_name},
+                    ):
+                        new_summary.return_tainted_from_parameters.add(
+                            parameter_name,
+                        )
+
+                if (
+                    new_summary.return_tainted_independent
+                    != summary.return_tainted_independent
+                    or new_summary.return_tainted_from_parameters
+                    != summary.return_tainted_from_parameters
+                ):
+                    self.function_summaries[name] = new_summary
+                    changed = True
+
+    def _function_returns_tainted(
+        self,
+        node: ast.FunctionDef,
+        tainted_parameters: set[str],
+    ) -> bool:
+        analyzer = FunctionSummaryAnalyzer(
+            set(tainted_parameters),
+            self.function_summaries,
+        )
+
+        for statement in node.body:
+            analyzer.visit(statement)
+
+        return analyzer.return_tainted
 
     def visit_Assign(self, node: ast.Assign) -> None:
 
         if TaintAnalyzer.expression_is_tainted(
             node.value,
             self.tainted_variables,
+            self.function_summaries,
         ):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -119,11 +425,10 @@ class TaintAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        # TODO: Function taint propagation
         self.generic_visit(node)
 
 
-class CommandInjectionAnalyzer(ast.NodeVisitor):
+class CommandInjectionAnalyzer(ScopeAwareAnalyzer):
     """
     Detects tainted data reaching command execution sinks.
 
@@ -134,8 +439,17 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
     - subprocess.Popen
     """
 
-    def __init__(self, tainted_variables: set[str]) -> None:
-        self.tainted_variables = tainted_variables
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        super().__init__(
+            tainted_variables,
+            function_defs,
+            function_summaries,
+        )
         self.findings: list[dict] = []
 
     @staticmethod
@@ -171,30 +485,24 @@ class CommandInjectionAnalyzer(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
 
         if not node.args:
-            self.generic_visit(node)
+            super().visit_Call(node)
             return
 
-        if not self._is_command_sink(node.func):
-            self.generic_visit(node)
-            return
+        if self._is_command_sink(node.func):
+            first_arg = node.args[0]
 
-        first_arg = node.args[0]
+            if self.expression_is_tainted(first_arg):
+                self.findings.append(
+                    {
+                        "type": "command_injection",
+                        "line": node.lineno,
+                    }
+                )
 
-        if TaintAnalyzer.expression_is_tainted(
-            first_arg,
-            self.tainted_variables,
-        ):
-            self.findings.append(
-                {
-                    "type": "command_injection",
-                    "line": node.lineno,
-                }
-            )
-
-        self.generic_visit(node)
+        super().visit_Call(node)
 
 
-class CodeInjectionAnalyzer(ast.NodeVisitor):
+class CodeInjectionAnalyzer(ScopeAwareAnalyzer):
     """
     Detects tainted data reaching code execution sinks.
 
@@ -203,8 +511,17 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
     - exec
     """
 
-    def __init__(self, tainted_variables: set[str]) -> None:
-        self.tainted_variables = tainted_variables
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        super().__init__(
+            tainted_variables,
+            function_defs,
+            function_summaries,
+        )
         self.findings: list[dict] = []
 
     @staticmethod
@@ -215,33 +532,25 @@ class CodeInjectionAnalyzer(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> None:
-
-
         if not node.args:
-            self.generic_visit(node)
-            return
-        
-        if not self._is_code_sink(node.func):
-            self.generic_visit(node)
+            super().visit_Call(node)
             return
 
-        first_arg = node.args[0]
+        if self._is_code_sink(node.func):
+            first_arg = node.args[0]
 
-        if TaintAnalyzer.expression_is_tainted(
-            first_arg,
-            self.tainted_variables,
-        ):
-            self.findings.append(
-                {
-                    "type": "code_injection",
-                    "line": node.lineno,
-                }
-            )
+            if self.expression_is_tainted(first_arg):
+                self.findings.append(
+                    {
+                        "type": "code_injection",
+                        "line": node.lineno,
+                    }
+                )
 
-        self.generic_visit(node)
+        super().visit_Call(node)
 
 
-class SqlInjectionAnalyzer(ast.NodeVisitor):
+class SqlInjectionAnalyzer(ScopeAwareAnalyzer):
     """
     Detects SQL execution sinks.
 
@@ -255,8 +564,17 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
     - Detect string-built SQL queries
     """
 
-    def __init__(self, tainted_variables: set[str]) -> None:
-        self.tainted_variables = tainted_variables
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        super().__init__(
+            tainted_variables,
+            function_defs,
+            function_summaries,
+        )
         self.findings: list[dict] = []
 
     @staticmethod
@@ -273,17 +591,13 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
 
         if not node.args:
-            self.generic_visit(node)
+            super().visit_Call(node)
             return
 
         if self._is_sql_sink(node.func):
-
             first_arg = node.args[0]
 
-            if TaintAnalyzer.expression_is_tainted(
-                first_arg,
-                self.tainted_variables,
-            ):
+            if self.expression_is_tainted(first_arg):
                 self.findings.append(
                     {
                         "type": "sql_injection",
@@ -291,10 +605,10 @@ class SqlInjectionAnalyzer(ast.NodeVisitor):
                     }
                 )
 
-        self.generic_visit(node)
+        super().visit_Call(node)
 
 
-class PathTraversalAnalyzer(ast.NodeVisitor):
+class PathTraversalAnalyzer(ScopeAwareAnalyzer):
     """
     Detects tainted paths reaching filesystem operations.
 
@@ -305,8 +619,17 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
     - Path.read_text
     """
 
-    def __init__(self, tainted_variables: set[str]) -> None:
-        self.tainted_variables = tainted_variables
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        super().__init__(
+            tainted_variables,
+            function_defs,
+            function_summaries,
+        )
         self.findings: list[dict] = []
         self.tainted_paths: set[str] = set()
     
@@ -329,10 +652,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
 
         first_arg = node.args[0]
 
-        return TaintAnalyzer.expression_is_tainted(
-            first_arg,
-            self.tainted_variables,
-        )
+        return self.expression_is_tainted(first_arg)
 
     def visit_Assign(self, node: ast.Assign) -> None:
 
@@ -347,10 +667,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
         ):
             first_arg = node.value.args[0]
 
-            if TaintAnalyzer.expression_is_tainted(
-                first_arg,
-                self.tainted_variables,
-            ):
+            if self.expression_is_tainted(first_arg):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         self.tainted_paths.add(target.id)
@@ -366,7 +683,7 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
                     if isinstance(target, ast.Name):
                         self.tainted_paths.add(target.id)
 
-        self.generic_visit(node)
+        super().visit_Assign(node)
 
     def visit_Call(self, node: ast.Call) -> None:
 
@@ -436,10 +753,10 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
                     }
                 )
 
-        self.generic_visit(node)
+        super().visit_Call(node)
 
 
-class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
+class UnsafeDeserializationAnalyzer(ScopeAwareAnalyzer):
     """
     Detects tainted data reaching deserialization sinks.
 
@@ -448,8 +765,17 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
     - pickle.loads
     """
 
-    def __init__(self, tainted_variables: set[str]) -> None:
-        self.tainted_variables = tainted_variables
+    def __init__(
+        self,
+        tainted_variables: set[str],
+        function_defs: dict[str, ast.FunctionDef],
+        function_summaries: dict[str, FunctionSummary],
+    ) -> None:
+        super().__init__(
+            tainted_variables,
+            function_defs,
+            function_summaries,
+        )
         self.findings: list[dict] = []
 
     @staticmethod
@@ -464,19 +790,16 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
 
         if not node.args:
-            self.generic_visit(node)
+            super().visit_Call(node)
             return
-        
+
         if not self._is_pickle_sink(node.func):
-            self.generic_visit(node)
+            super().visit_Call(node)
             return
 
         first_arg = node.args[0]
 
-        if TaintAnalyzer.expression_is_tainted(
-            first_arg,
-            self.tainted_variables,
-        ):
+        if self.expression_is_tainted(first_arg):
             self.findings.append(
                 {
                     "type": "unsafe_deserialization",
@@ -484,7 +807,7 @@ class UnsafeDeserializationAnalyzer(ast.NodeVisitor):
                 }
             )
 
-        self.generic_visit(node)
+        super().visit_Call(node)
 
 
 class TargetAnalyzer:
@@ -516,31 +839,41 @@ class TargetAnalyzer:
         findings: list[dict] = []
 
         command_analyzer = CommandInjectionAnalyzer(
-            taint_analyzer.tainted_variables
+            taint_analyzer.tainted_variables,
+            taint_analyzer.function_defs,
+            taint_analyzer.function_summaries,
         )
         command_analyzer.visit(tree)
         findings.extend(command_analyzer.findings)
 
         code_analyzer = CodeInjectionAnalyzer(
-            taint_analyzer.tainted_variables
+            taint_analyzer.tainted_variables,
+            taint_analyzer.function_defs,
+            taint_analyzer.function_summaries,
         )
         code_analyzer.visit(tree)
         findings.extend(code_analyzer.findings)
 
         sql_analyzer = SqlInjectionAnalyzer(
-            taint_analyzer.tainted_variables
+            taint_analyzer.tainted_variables,
+            taint_analyzer.function_defs,
+            taint_analyzer.function_summaries,
         )
         sql_analyzer.visit(tree)
         findings.extend(sql_analyzer.findings)
 
         path_analyzer = PathTraversalAnalyzer(
-            taint_analyzer.tainted_variables
+            taint_analyzer.tainted_variables,
+            taint_analyzer.function_defs,
+            taint_analyzer.function_summaries,
         )
         path_analyzer.visit(tree)
         findings.extend(path_analyzer.findings)
 
         deserialization_analyzer = UnsafeDeserializationAnalyzer(
-            taint_analyzer.tainted_variables
+            taint_analyzer.tainted_variables,
+            taint_analyzer.function_defs,
+            taint_analyzer.function_summaries,
         )
         deserialization_analyzer.visit(tree)
         findings.extend(deserialization_analyzer.findings)
@@ -664,7 +997,7 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/path_traversal_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/function_propagation_test.py"))
 
     for finding in findings:
         print(finding)
