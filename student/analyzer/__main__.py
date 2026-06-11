@@ -63,12 +63,11 @@ class TaintAnalyzer(ast.NodeVisitor):
         #
         # args.term
         #
-        if (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id in tainted_variables
-        ):
-            return True
+        if isinstance(node, ast.Attribute):
+            return TaintAnalyzer.expression_is_tainted(
+                node.value,
+                tainted_variables,
+            )
 
         #
         # f"...{user}..."
@@ -310,34 +309,6 @@ class PathTraversalAnalyzer(ast.NodeVisitor):
         self.tainted_variables = tainted_variables
         self.findings: list[dict] = []
         self.tainted_paths: set[str] = set()
-
-    @staticmethod
-    def _is_path_sink(func: ast.AST) -> bool:
-
-        if (
-            isinstance(func, ast.Name)
-            and func.id == "open"
-        ):
-            return True
-
-        if (
-            isinstance(func, ast.Attribute)
-            and func.attr == "open"
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "os"
-        ):
-            return True
-
-        if (
-            isinstance(func, ast.Attribute)
-            and func.attr in {
-                "open",
-                "read_text",
-            }
-        ):
-            return True
-
-        return False
     
     def _path_constructor_uses_tainted_data(
         self,
@@ -574,6 +545,13 @@ class TargetAnalyzer:
         deserialization_analyzer.visit(tree)
         findings.extend(deserialization_analyzer.findings)
 
+        for finding in findings:
+            finding["path"] = str(
+                file_path.relative_to(
+                    self.target_root
+                )
+            )
+
         return findings
 
     def analyze(self) -> list[dict]:
@@ -584,17 +562,79 @@ class TargetAnalyzer:
 
         return findings
 
+def load_manifest(targets_dir: Path) -> dict:
 
-def analyze(targets_dir: Path, out_dir: Path) -> dict:
-    """
-    TODO:
-    - Iterate over manifest targets
-    - Analyze every package
-    - Generate exploit scripts
-    - Attach exploit paths to findings
-    """
+    manifest_path = targets_dir / "manifest.json"
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Manifest not found: {manifest_path}"
+        )
+
+    return json.loads(
+        manifest_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+def analyze(
+    targets_dir: Path,
+    out_dir: Path,
+) -> dict:
 
     findings: list[dict] = []
+
+    manifest = load_manifest(targets_dir)
+
+    for target in manifest.get("targets", []):
+
+        target_root = (
+            targets_dir
+            / str(target.get("path", ""))
+        )
+
+        if not target_root.exists():
+            continue
+
+        analyzer = TargetAnalyzer(
+            target_root
+        )
+
+        target_findings = analyzer.analyze()
+
+        for index, finding in enumerate(
+            target_findings,
+            start=1,
+        ):
+            findings.append(
+                {
+                    "id":
+                        f"{target.get('id', 'unknown')}"
+                        f"-{finding['type']}"
+                        f"-{index}",
+
+                    "target_id":
+                        target.get(
+                            "id",
+                            "unknown",
+                        ),
+
+                    "vulnerability_type":
+                        finding["type"],
+
+                    "location":
+                        {
+                            "line":
+                                finding["line"]
+                        },
+
+                    "description":
+                        (
+                            f"Detected "
+                            f"{finding['type']}"
+                        ),
+                }
+            )
 
     return {
         "schema_version": "1.0",
@@ -626,4 +666,5 @@ if __name__ == "__main__":
 
     findings = analyzer.analyze_file(Path("student/analyzer/test/path_traversal_test.py"))
 
-    print(findings)
+    for finding in findings:
+        print(finding)
