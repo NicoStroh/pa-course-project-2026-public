@@ -1,4 +1,7 @@
 import sqlite3
+import sys
+
+user = sys.argv[1]
 
 connection = sqlite3.connect(":memory:")
 
@@ -16,3 +19,10 @@ DROP TABLE customers;
 """
 
 connection.executescript(script)
+
+connection.execute(
+    f"...{user}..."
+)
+connection.execute(
+    f"...{sys.argv[2]}..."
+)
