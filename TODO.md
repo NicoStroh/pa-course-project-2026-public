@@ -7,15 +7,9 @@
    unsafe deserialization: `pickle.load`, `pickle.loads`
    SQL injection: `execute`, `executescript`
    path traversal: `open`, `os.open`, `pathlib.Path.open`, `pathlib.Path.read_text`
-
-////// Diese Woche
-
 5. function call tainted propagation
-6. ?Source-to-Sink Analysis?
 
-- toys testen
-  //////
-
+6. toys testen
 7. Refactoring
 8. Generate Security Report
 
