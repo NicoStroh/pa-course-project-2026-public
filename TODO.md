@@ -9,14 +9,10 @@
    path traversal: `open`, `os.open`, `pathlib.Path.open`, `pathlib.Path.read_text`
 5. function call tainted propagation
 
-6. prof mail schreiben
-7. cfg - does source reach sink with exploit in variable
-8. toy examples testen
-
-Missing / still needed:
-
-- implement exploit generation and write executable PoC scripts under `/out/exploits/`
-- ensure Docker entrypoint supports `analyze /targets /out [single_target_folder]` exactly as required
-- integrate target manifest loading and per-target analysis output in final submission flow
+6. cfg - does source reach sink with exploit in variable
+7. toy examples testen
+8. implement exploit generation and write executable PoC scripts under `/out/exploits/`
+9. ensure Docker entrypoint supports `analyze /targets /out [single_target_folder]` exactly as required
+10. integrate target manifest loading and per-target analysis output in final submission flow
 
 Questions:
