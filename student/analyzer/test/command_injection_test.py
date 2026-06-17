@@ -1,4 +1,4 @@
-import os
+import os as o
 import sys
 import subprocess
 
@@ -6,10 +6,10 @@ a = sys.argv[1]
 b = a
 c = b
 
-os.system(c)
-os.popen(c)
+o.system(c)
+o.popen(c)
 subprocess.run(c)
 subprocess.Popen(c)
 
-os.system(sys.argv[2])
-os.system(f"ls {sys.argv[2]}")
+o.system(sys.argv[2])
+o.system(f"ls {sys.argv[2]}")

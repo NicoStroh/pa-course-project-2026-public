@@ -1120,7 +1120,7 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/analyzer/test/cross_file_import_test.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/command_injection_test.py"))
 
     for finding in findings:
         print(finding)
