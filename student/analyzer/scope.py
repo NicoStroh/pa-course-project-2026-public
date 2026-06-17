@@ -104,10 +104,34 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         for statement in node.body:
             if not isinstance(statement, ast.FunctionDef):
                 self.visit(statement)
+        
+        # Also visit function definitions to analyze their bodies
+        for statement in node.body:
+            if isinstance(statement, ast.FunctionDef):
+                self.visit(statement)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        # User-defined functions are analyzed at call sites.
-        return None
+        # Analyze function bodies, either at call sites or if they're
+        # module-level definitions that may be entry points.
+        if node.name not in self._call_stack:
+            parameter_names = [
+                arg.arg
+                for arg in (
+                    node.args.posonlyargs
+                    + node.args.args
+                    + node.args.kwonlyargs
+                )
+            ]
+            
+            # Push a new scope for the function
+            self.push_scope()
+            
+            # Analyze the function body
+            for statement in node.body:
+                self.visit(statement)
+            
+            # Pop the function scope
+            self.pop_scope()
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if TaintAnalyzer.expression_is_tainted(
