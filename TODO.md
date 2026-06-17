@@ -9,10 +9,9 @@
    path traversal: `open`, `os.open`, `pathlib.Path.open`, `pathlib.Path.read_text`
 5. function call tainted propagation
 
-6. toy examples testen
-7. refactor
-8. prof mail schreiben
-9. sanitizer approach /OR/ cfg - does source reach sink with exploit in variable
+6. prof mail schreiben
+7. cfg - does source reach sink with exploit in variable
+8. toy examples testen
 
 Missing / still needed:
 
