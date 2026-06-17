@@ -107,7 +107,7 @@ def main() -> int:
 if __name__ == "__main__":
     analyzer = TargetAnalyzer(Path("."))
 
-    findings = analyzer.analyze_file(Path("student/targets/toy_command_runner/toybackup/cli.py"))
+    findings = analyzer.analyze_file(Path("student/analyzer/test/toy_tainter_test.py"))
 
     for finding in findings:
         print(finding)
