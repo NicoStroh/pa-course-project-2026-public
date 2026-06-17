@@ -176,6 +176,11 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         self.function_summaries = function_summaries
         self.tainted_variables_stack: list[set[str]] = [set(tainted_variables)]
         self._call_stack: list[str] = []
+        # import alias maps for resolving module and from-import names
+        # maps local name -> module name (for `import X as Y` or `import X`)
+        self.import_aliases: dict[str, str] = {}
+        # maps local name -> (module, original_name) for `from M import name as local`
+        self.from_imports: dict[str, tuple[str, str]] = {}
 
     @property
     def tainted_variables(self) -> set[str]:
@@ -206,7 +211,54 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
             self.function_summaries,
         )
 
+    def _resolve_module_for_name(self, name: str) -> str:
+        return self.import_aliases.get(name, name)
+
+    def _is_attr_on_module(self, func: ast.AST, module_name: str, attr_names: set[str]) -> bool:
+        if not isinstance(func, ast.Attribute):
+            return False
+        if not isinstance(func.value, ast.Name):
+            return False
+        resolved = self._resolve_module_for_name(func.value.id)
+        return resolved == module_name and func.attr in attr_names
+
+    def _is_from_import_name(self, func: ast.AST, module_name: str | None, attr_names: set[str]) -> bool:
+        if not isinstance(func, ast.Name):
+            return False
+        local = func.id
+        if local not in self.from_imports:
+            return False
+        mod, orig = self.from_imports[local]
+        if module_name is not None and mod != module_name:
+            return False
+        return orig in attr_names
+
+    def _is_from_import_of(self, func: ast.AST, attr_names: set[str]) -> bool:
+        """Return True if `func` is a Name imported from any module and the original name matches attr_names."""
+        if not isinstance(func, ast.Name):
+            return False
+        local = func.id
+        if local not in self.from_imports:
+            return False
+        _, orig = self.from_imports[local]
+        return orig in attr_names
+
     def visit_Module(self, node: ast.Module) -> None:
+        # Collect import aliases and from-imports first so analyzers can
+        # resolve aliased module/attribute names when checking sinks.
+        for statement in node.body:
+            if isinstance(statement, ast.Import):
+                for alias in statement.names:
+                    local = alias.asname if alias.asname is not None else alias.name
+                    self.import_aliases[local] = alias.name.split(".")[0]
+
+            elif isinstance(statement, ast.ImportFrom):
+                module = statement.module or ""
+                base = module.split(".")[0] if module else ""
+                for alias in statement.names:
+                    local = alias.asname if alias.asname is not None else alias.name
+                    self.from_imports[local] = (base, alias.name)
+
         for statement in node.body:
             if not isinstance(statement, ast.FunctionDef):
                 self.visit(statement)
@@ -548,32 +600,20 @@ class CommandInjectionAnalyzer(ScopeAwareAnalyzer):
         )
         self.findings: list[dict] = []
 
-    @staticmethod
-    def _is_command_sink(func: ast.AST) -> bool:
-
-        if not isinstance(func, ast.Attribute):
-            return False
-
-        #
-        # os.system
-        # os.popen
-        #
-        if (
-            isinstance(func.value, ast.Name)
-            and func.value.id == "os"
-            and func.attr in {"system", "popen"}
-        ):
+    def _is_command_sink(self, func: ast.AST) -> bool:
+        # os.system / os.popen
+        if self._is_attr_on_module(func, "os", {"system", "popen"}):
             return True
 
-        #
-        # subprocess.run
-        # subprocess.Popen
-        #
-        if (
-            isinstance(func.value, ast.Name)
-            and func.value.id == "subprocess"
-            and func.attr in {"run", "Popen"}
-        ):
+        # subprocess.run / subprocess.Popen
+        if self._is_attr_on_module(func, "subprocess", {"run", "Popen"}):
+            return True
+
+        # direct from-imports: `from os import system` or `from subprocess import run`
+        if self._is_from_import_name(func, "os", {"system", "popen"}):
+            return True
+
+        if self._is_from_import_name(func, "subprocess", {"run", "Popen"}):
             return True
 
         return False
@@ -620,12 +660,16 @@ class CodeInjectionAnalyzer(ScopeAwareAnalyzer):
         )
         self.findings: list[dict] = []
 
-    @staticmethod
-    def _is_code_sink(func: ast.AST) -> bool:
-        return (
-            isinstance(func, ast.Name)
-            and func.id in {"eval", "exec"}
-        )
+    def _is_code_sink(self, func: ast.AST) -> bool:
+        # direct builtin usage
+        if isinstance(func, ast.Name) and func.id in {"eval", "exec"}:
+            return True
+
+        # from-imports like `from builtins import eval as e`
+        if self._is_from_import_name(func, "builtins", {"eval", "exec"}):
+            return True
+
+        return False
 
     def visit_Call(self, node: ast.Call) -> None:
         if not node.args:
@@ -673,16 +717,20 @@ class SqlInjectionAnalyzer(ScopeAwareAnalyzer):
         )
         self.findings: list[dict] = []
 
-    @staticmethod
-    def _is_sql_sink(func: ast.AST) -> bool:
-        return (
-            isinstance(func, ast.Attribute)
-            and func.attr in {
-                "execute",
-                "executemany",
-                "executescript",
-            }
-        )
+    def _is_sql_sink(self, func: ast.AST) -> bool:
+        # Attribute-style sinks (e.g., cursor.execute)
+        if isinstance(func, ast.Attribute) and func.attr in {
+            "execute",
+            "executemany",
+            "executescript",
+        }:
+            return True
+
+        # Direct from-imports where the imported name matches one of the SQL calls
+        if self._is_from_import_of(func, {"execute", "executemany", "executescript"}):
+            return True
+
+        return False
 
     def visit_Call(self, node: ast.Call) -> None:
 
@@ -737,10 +785,20 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
         if not isinstance(node, ast.Call):
             return False
 
-        if not (
-            isinstance(node.func, ast.Name)
-            and node.func.id == "Path"
-        ):
+        # Accept direct `Path(...)`, `from pathlib import Path` aliases,
+        # and attribute-style `pathlib.Path(...)` (including aliases).
+        is_path_constructor = False
+
+        if isinstance(node.func, ast.Name):
+            if node.func.id == "Path" or self._is_from_import_name(node.func, "pathlib", {"Path"}):
+                is_path_constructor = True
+
+        elif isinstance(node.func, ast.Attribute):
+            # e.g. pathlib.Path or pl.Path where `pl` is alias for `pathlib`
+            if isinstance(node.func.value, ast.Name) and self._resolve_module_for_name(node.func.value.id) == "pathlib" and node.func.attr == "Path":
+                is_path_constructor = True
+
+        if not is_path_constructor:
             return False
 
         if not node.args:
@@ -757,8 +815,15 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
         #
         if (
             isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "Path"
+            and (
+                (isinstance(node.value.func, ast.Name) and (node.value.func.id == "Path" or self._is_from_import_name(node.value.func, "pathlib", {"Path"})))
+                or (
+                    isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                    and self._resolve_module_for_name(node.value.func.value.id) == "pathlib"
+                    and node.value.func.attr == "Path"
+                )
+            )
             and node.value.args
         ):
             first_arg = node.value.args[0]
@@ -794,7 +859,7 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
             isinstance(node.func, ast.Attribute)
             and node.func.attr == "open"
             and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "os"
+            and self._resolve_module_for_name(node.func.value.id) == "os"
         ):
 
             if node.args:
@@ -874,14 +939,16 @@ class UnsafeDeserializationAnalyzer(ScopeAwareAnalyzer):
         )
         self.findings: list[dict] = []
 
-    @staticmethod
-    def _is_pickle_sink(func: ast.AST) -> bool:
-        return (
-            isinstance(func, ast.Attribute)
-            and func.attr in {"load", "loads"}
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "pickle"
-        )
+    def _is_pickle_sink(self, func: ast.AST) -> bool:
+        # pickle.load / pickle.loads via module attribute
+        if self._is_attr_on_module(func, "pickle", {"load", "loads"}):
+            return True
+
+        # direct from-imports: `from pickle import load`
+        if self._is_from_import_name(func, "pickle", {"load", "loads"}):
+            return True
+
+        return False
 
     def visit_Call(self, node: ast.Call) -> None:
 
