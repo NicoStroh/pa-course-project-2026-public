@@ -11,8 +11,9 @@
 6. cfg
 
 7. toy examples testen
-8. implement exploit generation and write executable PoC scripts under `/out/exploits/`
-9. ensure Docker entrypoint supports `analyze /targets /out [single_target_folder]` exactly as required
-10. integrate target manifest loading and per-target analysis output in final submission flow
+8. add exploit patterns to sanitizers.py
+9. implement exploit generation and write executable PoC scripts under `/out/exploits/`
+10. ensure Docker entrypoint supports `analyze /targets /out [single_target_folder]` exactly as required
+11. integrate target manifest loading and per-target analysis output in final submission flow
 
 Questions:
