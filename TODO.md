@@ -8,12 +8,9 @@
    SQL injection: `execute`, `executescript`
    path traversal: `open`, `os.open`, `pathlib.Path.open`, `pathlib.Path.read_text`
 5. function call tainted propagation
+6. cfg
 
-DIESE WOCHE
-
-6. cfg - does source reach sink with exploit in variable
 7. toy examples testen
-
 8. implement exploit generation and write executable PoC scripts under `/out/exploits/`
 9. ensure Docker entrypoint supports `analyze /targets /out [single_target_folder]` exactly as required
 10. integrate target manifest loading and per-target analysis output in final submission flow

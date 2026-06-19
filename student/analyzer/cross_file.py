@@ -15,6 +15,8 @@ class FunctionSummary:
         self.parameter_names = parameter_names
         self.return_tainted_independent: bool = False
         self.return_tainted_from_parameters: set[str] = set()
+        # Interprocedural control-flow: True if this function has calls in control-dependent blocks
+        self.has_calls_in_control_dependent_blocks: bool = False
 
     def returns_tainted(
         self,
@@ -143,26 +145,78 @@ class CrossFileAnalyzer:
                             parameter_name,
                         )
 
+                # Check for interprocedural control-flow: calls in control-dependent blocks
+                new_summary.has_calls_in_control_dependent_blocks = (
+                    self._function_has_calls_in_control_dependent_blocks(node)
+                )
+
                 if (
                     new_summary.return_tainted_independent
                     != summary.return_tainted_independent
                     or new_summary.return_tainted_from_parameters
                     != summary.return_tainted_from_parameters
+                    or new_summary.has_calls_in_control_dependent_blocks
+                    != summary.has_calls_in_control_dependent_blocks
                 ):
                     self.global_summaries[name] = new_summary
                     changed = True
+
+    def _function_has_calls_in_control_dependent_blocks(
+        self,
+        node: ast.FunctionDef,
+    ) -> bool:
+        """Check if function has calls in control-dependent blocks (interprocedural control-flow)."""
+        from cfg import build_cfg_for_function
+
+        cfg = build_cfg_for_function(node)
+
+        # Any call in a control-dependent block means this function has such calls
+        for cond_bid, dependent_bids in getattr(cfg, "control_deps", {}).items():
+            for bid in dependent_bids:
+                block = cfg.blocks.get(bid)
+                if block:
+                    for stmt in block.stmts:
+                        if isinstance(stmt, ast.Call):
+                            return True
+                        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                            return True
+                        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
+                            return True
+
+        return False
 
     def _function_returns_tainted(
         self,
         node: ast.FunctionDef,
         tainted_parameters: set[str],
     ) -> bool:
-        analyzer = FunctionSummaryAnalyzer(
-            set(tainted_parameters),
-            self.global_summaries,
-        )
+        # Import here to avoid circular dependency
+        from control_flow import propagate_implicit_taints
 
-        for statement in node.body:
-            analyzer.visit(statement)
+        # We perform a fixed-point iteration: analyze explicit taints,
+        # then compute implicit taints from control dependencies, and
+        # repeat until stable. This conservatively captures returns
+        # that become tainted due to control-flow.
+        current_tainted = set(tainted_parameters)
 
-        return analyzer.return_tainted
+        while True:
+            analyzer = FunctionSummaryAnalyzer(
+                set(current_tainted),
+                self.global_summaries,
+            )
+
+            for statement in node.body:
+                analyzer.visit(statement)
+
+            implicit = propagate_implicit_taints(
+                node,
+                analyzer.tainted_variables,
+                self.global_summaries,
+            )
+
+            new_tainted = set(current_tainted) | analyzer.tainted_variables | set(implicit)
+
+            if new_tainted == current_tainted:
+                return analyzer.return_tainted
+
+            current_tainted = new_tainted

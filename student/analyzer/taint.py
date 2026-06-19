@@ -4,6 +4,7 @@ import ast
 from typing import Dict, List, Set
 
 from cross_file import FunctionSummary
+from sanitizers import is_inplace_sanitizer_call, is_sanitizer_call
 
 
 class TaintAnalyzer(ast.NodeVisitor):
@@ -119,6 +120,15 @@ class TaintAnalyzer(ast.NodeVisitor):
         # function call
         #
         if isinstance(node, ast.Call):
+            # Known sanitizers override taint on their returned value.
+            if is_sanitizer_call(
+                node,
+                tainted_variables,
+                function_summaries,
+                TaintAnalyzer.expression_is_tainted,
+            ):
+                return False
+
             if (
                 function_summaries is not None
                 and isinstance(node.func, ast.Name)
@@ -224,6 +234,29 @@ class TaintAnalyzer(ast.NodeVisitor):
                 )
             )
 
+        #
+        # comparison: a == b, a < b, etc.
+        #
+        if isinstance(node, ast.Compare):
+            # If left operand is tainted, the comparison is tainted
+            if TaintAnalyzer.expression_is_tainted(
+                node.left,
+                tainted_variables,
+                function_summaries,
+            ):
+                return True
+
+            # If any right operand is tainted, the comparison is tainted
+            for comparator in node.comparators:
+                if TaintAnalyzer.expression_is_tainted(
+                    comparator,
+                    tainted_variables,
+                    function_summaries,
+                ):
+                    return True
+
+            return False
+
         return False
 
     def visit_Module(self, node: ast.Module) -> None:
@@ -235,10 +268,40 @@ class TaintAnalyzer(ast.NodeVisitor):
         # Compute local function summaries (may override pre-existing ones)
         self._compute_function_summaries()
 
-        # Analyze module-level code
-        for statement in node.body:
-            if not isinstance(statement, ast.FunctionDef):
+        # Analyze module-level code with implicit-taint propagation.
+        # We iterate to a fixed point because implicit taints can cause
+        # further explicit taints in later statements.
+        from control_flow import propagate_implicit_taints
+
+        module_stmts = [s for s in node.body if not isinstance(s, ast.FunctionDef)]
+
+        # Represent module body as a fake FunctionDef for the CFG builder.
+        fake_func = ast.FunctionDef(
+            name="<module>",
+            args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
+            body=module_stmts,
+            decorator_list=[],
+        )
+
+        changed = True
+        while changed:
+            changed = False
+
+            # Visit statements to collect explicit taints
+            for statement in module_stmts:
                 self.visit(statement)
+
+            # Propagate implicit taints from control dependencies
+            implicit = propagate_implicit_taints(
+                fake_func,
+                self.tainted_variables,
+                self.function_summaries,
+            )
+
+            for v in implicit:
+                if v not in self.tainted_variables:
+                    self.tainted_variables.add(v)
+                    changed = True
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Function bodies are analyzed through summaries, not as module-level statements.
@@ -311,17 +374,31 @@ class TaintAnalyzer(ast.NodeVisitor):
         return analyzer.return_tainted
 
     def visit_Assign(self, node: ast.Assign) -> None:
-
-        if TaintAnalyzer.expression_is_tainted(
+        value_is_tainted = TaintAnalyzer.expression_is_tainted(
             node.value,
             self.tainted_variables,
             self.function_summaries,
-        ):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
+        )
+
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                if value_is_tainted:
                     self.tainted_variables.add(target.id)
+                else:
+                    # Strong update for simple assignments: if RHS is not tainted
+                    # (including known sanitizer calls), target is considered untainted.
+                    self.tainted_variables.discard(target.id)
 
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        # In-place sanitizers, e.g., tainted_var.remove("../")
+        # should untaint the base variable when we know the removed token.
+        inplace_sanitized, variable_name = is_inplace_sanitizer_call(
+            node,
+            self.tainted_variables,
+        )
+        if inplace_sanitized and variable_name is not None:
+            self.tainted_variables.discard(variable_name)
+
         self.generic_visit(node)
