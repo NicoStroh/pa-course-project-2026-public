@@ -28,6 +28,8 @@ class TaintAnalyzer(ast.NodeVisitor):
         self.tainted_variables: set[str] = set()
         self.function_defs: dict[str, ast.FunctionDef] = function_defs or {}
         self.function_summaries: dict[str, FunctionSummary] = function_summaries or {}
+        # Variables in this set are protected from strong untaint updates.
+        self._protected_taints: set[str] = set()
 
     @staticmethod
     def _call_argument_taints(
@@ -283,6 +285,12 @@ class TaintAnalyzer(ast.NodeVisitor):
             decorator_list=[],
         )
 
+        # Variables proven implicitly tainted by control dependencies should
+        # remain tainted across iterations, otherwise strong updates in
+        # visit_Assign can oscillate with implicit propagation.
+        sticky_implicit_taints: set[str] = set()
+        self._protected_taints = sticky_implicit_taints
+
         changed = True
         while changed:
             changed = False
@@ -302,6 +310,19 @@ class TaintAnalyzer(ast.NodeVisitor):
                 if v not in self.tainted_variables:
                     self.tainted_variables.add(v)
                     changed = True
+                if v not in sticky_implicit_taints:
+                    sticky_implicit_taints.add(v)
+                    changed = True
+
+            # Re-apply sticky implicit taints to enforce monotonic growth
+            # in the module-level fixed-point computation.
+            for v in sticky_implicit_taints:
+                if v not in self.tainted_variables:
+                    self.tainted_variables.add(v)
+                    changed = True
+
+        # Reset protection outside module-level fixed-point processing.
+        self._protected_taints = set()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Function bodies are analyzed through summaries, not as module-level statements.
@@ -387,7 +408,8 @@ class TaintAnalyzer(ast.NodeVisitor):
                 else:
                     # Strong update for simple assignments: if RHS is not tainted
                     # (including known sanitizer calls), target is considered untainted.
-                    self.tainted_variables.discard(target.id)
+                    if target.id not in self._protected_taints:
+                        self.tainted_variables.discard(target.id)
 
         self.generic_visit(node)
 
