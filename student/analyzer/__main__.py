@@ -9,7 +9,7 @@ from target import TargetAnalyzer
 
 # One-click run configuration (used when this file is run with no CLI args).
 # Change this path to the file you want to analyze from the Run button.
-RUN_FILE_PATH = Path("student/targets/toy_note_server/note_server/cli.py")
+RUN_FILE_PATH = Path("student/targets/toy_command_runner/toybackup/cli.py")
 
 def load_manifest(targets_dir: Path) -> dict:
 
@@ -108,9 +108,10 @@ def run_configured_single_file() -> int:
     print(f"Findings: {len(findings)}")
     
     for finding in findings:
+        finding_path = finding.get("path", str(file_path.relative_to(file_path.parent)))
         print(
             f"  Line {finding['line']:4d} | {finding['type']:25s} | "
-            f"{file_path.relative_to(file_path.parent)}"
+            f"{finding_path}"
         )
 
     return 0
@@ -169,9 +170,10 @@ def main() -> int:
         print("-" * 70)
 
         for finding in findings:
+            finding_path = finding.get("path", str(args.filepath.relative_to(args.filepath.parent)))
             print(
                 f"  Line {finding['line']:4d} | {finding['type']:25s} | "
-                f"{args.filepath.relative_to(args.filepath.parent)}"
+                f"{finding_path}"
             )
 
         return 0

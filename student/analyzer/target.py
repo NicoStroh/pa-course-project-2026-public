@@ -45,6 +45,16 @@ class TargetAnalyzer:
     def analyze_file(self, file_path: Path) -> list[dict]:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
 
+        relative_path = str(
+            file_path.relative_to(
+                self.target_root
+            )
+        )
+
+        # Attach source metadata for all nodes in the file being analyzed.
+        for node in ast.walk(tree):
+            setattr(node, "source_path", relative_path)
+
         # Collect local function definitions from this file
         local_function_defs: dict[str, ast.FunctionDef] = {}
         for node in ast.walk(tree):
@@ -111,23 +121,18 @@ class TargetAnalyzer:
         deserialization_analyzer.visit(tree)
         findings.extend(deserialization_analyzer.findings)
 
-        relative_path = str(
-            file_path.relative_to(
-                self.target_root
-            )
-        )
-
         # Normalize and deduplicate findings so identical sink reports are
         # emitted once even if multiple traversal paths reach the same call.
         deduped_findings: list[dict] = []
         seen: set[tuple[str, int, str]] = set()
 
         for finding in findings:
-            finding["path"] = relative_path
+            finding_path = str(finding.get("path") or relative_path)
+            finding["path"] = finding_path
 
             finding_type = str(finding.get("type", ""))
             line = int(finding.get("line", -1))
-            key = (finding_type, line, relative_path)
+            key = (finding_type, line, finding_path)
 
             if key in seen:
                 continue

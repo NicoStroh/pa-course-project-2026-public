@@ -62,6 +62,7 @@ class CommandInjectionAnalyzer(ScopeAwareAnalyzer):
                     {
                         "type": "command_injection",
                         "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
                     }
                 )
 
@@ -114,6 +115,7 @@ class CodeInjectionAnalyzer(ScopeAwareAnalyzer):
                     {
                         "type": "code_injection",
                         "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
                     }
                 )
 
@@ -172,6 +174,7 @@ class SqlInjectionAnalyzer(ScopeAwareAnalyzer):
                     {
                         "type": "sql_injection",
                         "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
                     }
                 )
 
@@ -299,6 +302,7 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
                         {
                             "type": "path_traversal",
                             "line": node.lineno,
+                            "path": getattr(node, "source_path", None),
                         }
                     )
 
@@ -323,6 +327,7 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
                     {
                         "type": "path_traversal",
                         "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
                     }
                 )
 
@@ -337,6 +342,7 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
                     {
                         "type": "path_traversal",
                         "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
                     }
                 )
 
@@ -393,6 +399,7 @@ class UnsafeDeserializationAnalyzer(ScopeAwareAnalyzer):
                 {
                     "type": "unsafe_deserialization",
                     "line": node.lineno,
+                    "path": getattr(node, "source_path", None),
                 }
             )
 

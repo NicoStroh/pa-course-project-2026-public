@@ -92,6 +92,13 @@ class CrossFileAnalyzer:
                 module_name = py_file.stem
                 text = py_file.read_text(encoding="utf-8")
                 tree = ast.parse(text)
+                relative_path = str(py_file.relative_to(self.target_root))
+
+                # Keep source-path metadata on nodes so cross-file traversals can
+                # report findings against the real file instead of the entry file.
+                for node in ast.walk(tree):
+                    setattr(node, "source_path", relative_path)
+
                 self.module_asts[module_name] = tree
 
                 for node in ast.walk(tree):
