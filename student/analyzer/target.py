@@ -111,14 +111,31 @@ class TargetAnalyzer:
         deserialization_analyzer.visit(tree)
         findings.extend(deserialization_analyzer.findings)
 
-        for finding in findings:
-            finding["path"] = str(
-                file_path.relative_to(
-                    self.target_root
-                )
+        relative_path = str(
+            file_path.relative_to(
+                self.target_root
             )
+        )
 
-        return findings
+        # Normalize and deduplicate findings so identical sink reports are
+        # emitted once even if multiple traversal paths reach the same call.
+        deduped_findings: list[dict] = []
+        seen: set[tuple[str, int, str]] = set()
+
+        for finding in findings:
+            finding["path"] = relative_path
+
+            finding_type = str(finding.get("type", ""))
+            line = int(finding.get("line", -1))
+            key = (finding_type, line, relative_path)
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+            deduped_findings.append(finding)
+
+        return deduped_findings
 
     def analyze(self) -> list[dict]:
         findings: list[dict] = []
