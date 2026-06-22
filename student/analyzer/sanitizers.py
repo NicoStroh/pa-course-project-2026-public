@@ -4,7 +4,13 @@ import ast
 from typing import Callable
 
 
-_TRAVERSAL_TOKENS = {"../", "..\\"}
+# These patterns are the exploits we want to check for:
+# - "../" and "..\\" for path traversal (path.read_text)
+# - "&&" for command injection (os.system)
+# - "print()" for code injection (eval)
+# - "class" for unsafe deserialization (pickle.loads)
+# - SQL injection is more complex (too many SQL statements are possible exploits) and can therefore not be reliably detected with constant patterns
+_TRAVERSAL_TOKENS = {"../", "..\\", "&&", "print()", "class"}
 
 
 def _is_constant_str(node: ast.AST, values: set[str] | None = None) -> bool:
@@ -26,7 +32,7 @@ def is_sanitizer_call(
     This is intentionally conservative and only recognizes explicit patterns.
     """
 
-    # x.replace("../", "") or x.replace("..\\", "")
+    # x.replace("../", "") or x.replace("..\\", ""). finds patterns as describes in _TRAVERSAL_TOKENS
     if isinstance(node.func, ast.Attribute) and node.func.attr == "replace":
         if len(node.args) >= 2:
             pattern, replacement = node.args[0], node.args[1]
