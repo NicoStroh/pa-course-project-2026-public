@@ -331,6 +331,17 @@ class PathTraversalAnalyzer(ScopeAwareAnalyzer):
                     }
                 )
 
+            # Fallback: if the receiver expression is tainted, treat it as a
+            # tainted path sink even when it was not captured in tainted_paths.
+            elif self.expression_is_tainted(node.func.value):
+                self.findings.append(
+                    {
+                        "type": "path_traversal",
+                        "line": node.lineno,
+                        "path": getattr(node, "source_path", None),
+                    }
+                )
+
             #
             # Path(filename).read_text()
             # Path(filename).open()
