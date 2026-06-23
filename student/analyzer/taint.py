@@ -413,6 +413,35 @@ class TaintAnalyzer(ast.NodeVisitor):
 
         self.generic_visit(node)
 
+    def visit_With(self, node: ast.With) -> None:
+        # Propagate taint through context-manager bindings,
+        # e.g. `with open(tainted_path) as fd:` -> `fd` is tainted.
+        for item in node.items:
+            if item.optional_vars is None:
+                continue
+
+            context_is_tainted = TaintAnalyzer.expression_is_tainted(
+                item.context_expr,
+                self.tainted_variables,
+                self.function_summaries,
+            )
+
+            if not context_is_tainted:
+                continue
+
+            if isinstance(item.optional_vars, ast.Name):
+                self.tainted_variables.add(item.optional_vars.id)
+            elif isinstance(item.optional_vars, ast.Tuple):
+                for element in item.optional_vars.elts:
+                    if isinstance(element, ast.Name):
+                        self.tainted_variables.add(element.id)
+
+        self.generic_visit(node)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        # Keep async context-manager behavior aligned with visit_With.
+        self.visit_With(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         # In-place sanitizers, e.g., tainted_var.remove("../")
         # should untaint the base variable when we know the removed token.
