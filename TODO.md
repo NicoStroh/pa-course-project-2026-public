@@ -12,7 +12,8 @@
 7. toy examples testen
 8. add exploit patterns to sanitizers.py
 
-9. implement exploit generation and write executable PoC scripts under `/out/exploits/`
-10. find out what else to do
+9. real word examples testen
+10. implement exploit generation and write executable PoC scripts under `/out/exploits/`
+11. submission ready
 
 Questions:
