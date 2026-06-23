@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 from target import TargetAnalyzer
+from exploit_generation import generate_exploit
 
 
 # One-click run configuration (used when this file is run with no CLI args).
@@ -55,35 +56,46 @@ def analyze(
             target_findings,
             start=1,
         ):
-            findings.append(
-                {
-                    "id":
-                        f"{target.get('id', 'unknown')}"
-                        f"-{finding['type']}"
-                        f"-{index}",
+            entry = {
+                "id":
+                    f"{target.get('id', 'unknown')}"
+                    f"-{finding['type']}"
+                    f"-{index}",
 
-                    "target_id":
-                        target.get(
-                            "id",
-                            "unknown",
-                        ),
+                "target_id":
+                    target.get(
+                        "id",
+                        "unknown",
+                    ),
 
-                    "vulnerability_type":
-                        finding["type"],
+                "vulnerability_type":
+                    finding["type"],
 
-                    "location":
-                        {
-                            "line":
-                                finding["line"]
-                        },
+                "location":
+                    {
+                        "path":
+                            finding.get("path", ""),
+                        "line":
+                            finding["line"]
+                    },
 
-                    "description":
-                        (
-                            f"Detected "
-                            f"{finding['type']}"
-                        ),
-                }
+                "description":
+                    (
+                        f"Detected "
+                        f"{finding['type']}"
+                    ),
+            }
+
+            exploit_ref = generate_exploit(
+                finding,
+                target_root,
+                out_dir,
+                target,
             )
+            if exploit_ref is not None:
+                entry["exploit"] = exploit_ref
+
+            findings.append(entry)
 
     return {
         "schema_version": "1.0",
