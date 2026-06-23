@@ -146,13 +146,26 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        if (
-            isinstance(node.func, ast.Name)
-            and node.func.id in self.function_defs
-            and node.func.id not in self._call_stack
-        ):
-            function_name = node.func.id
-            function_def = self.function_defs[function_name]
+        resolved_function_name: str | None = None
+
+        if isinstance(node.func, ast.Name):
+            if (
+                node.func.id in self.function_defs
+                and node.func.id not in self._call_stack
+            ):
+                resolved_function_name = node.func.id
+
+        # Support class/module attribute-style calls when the attribute matches
+        # a known local/global function definition, e.g. Backup.load_restore_state(...).
+        elif isinstance(node.func, ast.Attribute):
+            if (
+                node.func.attr in self.function_defs
+                and node.func.attr not in self._call_stack
+            ):
+                resolved_function_name = node.func.attr
+
+        if resolved_function_name is not None:
+            function_def = self.function_defs[resolved_function_name]
             parameter_names = [
                 arg.arg
                 for arg in (
@@ -169,7 +182,7 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
                 self.function_summaries,
             )
 
-            self._call_stack.append(function_name)
+            self._call_stack.append(resolved_function_name)
             self.push_scope(
                 dict(zip(parameter_names, argument_taints))
             )
