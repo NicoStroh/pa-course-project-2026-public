@@ -25,6 +25,8 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         self.from_imports: dict[str, tuple[str, str]] = {}
         # argparse callback handlers assigned via set_defaults(func=...)
         self.argparse_handler_names: set[str] = set()
+        # typer command functions: maps function name -> set of tainted parameter names
+        self.typer_command_parameters: dict[str, set[str]] = {}
 
     @property
     def tainted_variables(self) -> set[str]:
@@ -87,6 +89,26 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         _, orig = self.from_imports[local]
         return orig in attr_names
 
+    def _get_type_annotation_name(self, annotation: ast.AST) -> str:
+        """Extract type name from annotation AST node (e.g., 'str', 'Path', 'Optional[str]')."""
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        elif isinstance(annotation, ast.Attribute):
+            # Handle pathlib.Path -> "Path"
+            return annotation.attr
+        elif isinstance(annotation, ast.Subscript):
+            # Handle Optional[str], list[str], etc.
+            if isinstance(annotation.value, ast.Name):
+                base = annotation.value.id
+                if base == "Optional":
+                    # Extract inner type from Optional[...]
+                    if isinstance(annotation.slice, ast.Name):
+                        return f"Optional[{annotation.slice.id}]"
+                    elif isinstance(annotation.slice, ast.Attribute):
+                        return f"Optional[{annotation.slice.attr}]"
+                return base
+        return ""
+
     def visit_Module(self, node: ast.Module) -> None:
         # Collect import aliases and from-imports first so analyzers can
         # resolve aliased module/attribute names when checking sinks.
@@ -121,6 +143,47 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
                 if isinstance(keyword.value, ast.Name):
                     self.argparse_handler_names.add(keyword.value.id)
 
+        # Collect Typer command functions with tainted parameters (str, Path types)
+        for statement in node.body:
+            if not isinstance(statement, ast.FunctionDef):
+                continue
+
+            # Check if function has @app.command() or similar Typer decorators
+            has_typer_decorator = False
+            for decorator in statement.decorator_list:
+                # Match @app.command() or @typer_obj.command()
+                if isinstance(decorator, ast.Call):
+                    if isinstance(decorator.func, ast.Attribute):
+                        if decorator.func.attr == "command":
+                            has_typer_decorator = True
+                            break
+                # Also match plain @command (less likely but possible)
+                elif isinstance(decorator, ast.Name):
+                    if decorator.id == "command":
+                        has_typer_decorator = True
+                        break
+
+            if not has_typer_decorator:
+                continue
+
+            # Collect parameter names with str or Path type hints
+            tainted_params = set()
+            for arg in (
+                statement.args.posonlyargs
+                + statement.args.args
+                + statement.args.kwonlyargs
+            ):
+                if arg.annotation is None:
+                    continue
+
+                # Check if annotation is str or Path
+                param_type_str = self._get_type_annotation_name(arg.annotation)
+                if param_type_str in ("str", "Path", "Optional[str]", "Optional[Path]"):
+                    tainted_params.add(arg.arg)
+
+            if tainted_params:
+                self.typer_command_parameters[statement.name] = tainted_params
+
         for statement in node.body:
             if not isinstance(statement, ast.FunctionDef):
                 self.visit(statement)
@@ -145,6 +208,11 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
             
             # Push a new scope for the function
             self.push_scope()
+            
+            # For Typer command functions, mark the declared tainted parameters
+            if node.name in self.typer_command_parameters:
+                for param_name in self.typer_command_parameters[node.name]:
+                    self.tainted_variables.add(param_name)
             
             # Analyze the function body
             for statement in node.body:
