@@ -259,6 +259,68 @@ class TaintAnalyzer(ast.NodeVisitor):
 
             return False
 
+        #
+        # list: [elem1, elem2, ...]
+        #
+        if isinstance(node, ast.List):
+            for element in node.elts:
+                if TaintAnalyzer.expression_is_tainted(
+                    element,
+                    tainted_variables,
+                    function_summaries,
+                ):
+                    return True
+            return False
+
+        #
+        # tuple: (elem1, elem2, ...)
+        #
+        if isinstance(node, ast.Tuple):
+            for element in node.elts:
+                if TaintAnalyzer.expression_is_tainted(
+                    element,
+                    tainted_variables,
+                    function_summaries,
+                ):
+                    return True
+            return False
+
+        #
+        # set: {elem1, elem2, ...}
+        #
+        if isinstance(node, ast.Set):
+            for element in node.elts:
+                if TaintAnalyzer.expression_is_tainted(
+                    element,
+                    tainted_variables,
+                    function_summaries,
+                ):
+                    return True
+            return False
+
+        #
+        # dict: {"key": value, ...}
+        #
+        if isinstance(node, ast.Dict):
+            # Check keys
+            for key in node.keys:
+                if key is not None:  # key can be None for **dict unpacking
+                    if TaintAnalyzer.expression_is_tainted(
+                        key,
+                        tainted_variables,
+                        function_summaries,
+                    ):
+                        return True
+            # Check values
+            for value in node.values:
+                if TaintAnalyzer.expression_is_tainted(
+                    value,
+                    tainted_variables,
+                    function_summaries,
+                ):
+                    return True
+            return False
+
         return False
 
     def visit_Module(self, node: ast.Module) -> None:

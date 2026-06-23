@@ -9,7 +9,7 @@ from target import TargetAnalyzer
 
 # One-click run configuration (used when this file is run with no CLI args).
 # Change this path to the file you want to analyze from the Run button.
-RUN_FILE_PATH = Path("student/analyzer/test/if_test.py")
+RUN_FILE_PATH = Path("student/targets/fossier/src/fossier/cli.py")
 
 def load_manifest(targets_dir: Path) -> dict:
 
