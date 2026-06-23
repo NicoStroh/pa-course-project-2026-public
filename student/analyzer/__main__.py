@@ -4,6 +4,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+# Add the analyzer directory to sys.path so relative imports work
+# when the module is invoked via `python -m analyzer`.
+sys.path.insert(0, str(Path(__file__).parent.absolute()))
+
 from target import TargetAnalyzer
 from exploit_generation import generate_exploit
 
