@@ -23,6 +23,8 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         self.import_aliases: dict[str, str] = {}
         # maps local name -> (module, original_name) for `from M import name as local`
         self.from_imports: dict[str, tuple[str, str]] = {}
+        # argparse callback handlers assigned via set_defaults(func=...)
+        self.argparse_handler_names: set[str] = set()
 
     @property
     def tainted_variables(self) -> set[str]:
@@ -101,6 +103,24 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
                     local = alias.asname if alias.asname is not None else alias.name
                     self.from_imports[local] = (base, alias.name)
 
+        # Collect argparse callback handlers defined via parser.set_defaults(func=handler)
+        for callback in ast.walk(node):
+            if not isinstance(callback, ast.Call):
+                continue
+
+            if not isinstance(callback.func, ast.Attribute):
+                continue
+
+            if callback.func.attr != "set_defaults":
+                continue
+
+            for keyword in callback.keywords:
+                if keyword.arg != "func":
+                    continue
+
+                if isinstance(keyword.value, ast.Name):
+                    self.argparse_handler_names.add(keyword.value.id)
+
         for statement in node.body:
             if not isinstance(statement, ast.FunctionDef):
                 self.visit(statement)
@@ -175,14 +195,14 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
         self.visit_With(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        resolved_function_name: str | None = None
+        resolved_function_names: list[str] = []
 
         if isinstance(node.func, ast.Name):
             if (
                 node.func.id in self.function_defs
                 and node.func.id not in self._call_stack
             ):
-                resolved_function_name = node.func.id
+                resolved_function_names.append(node.func.id)
 
         # Support class/module attribute-style calls when the attribute matches
         # a known local/global function definition, e.g. Backup.load_restore_state(...).
@@ -191,9 +211,28 @@ class ScopeAwareAnalyzer(ast.NodeVisitor):
                 node.func.attr in self.function_defs
                 and node.func.attr not in self._call_stack
             ):
-                resolved_function_name = node.func.attr
+                resolved_function_names.append(node.func.attr)
 
-        if resolved_function_name is not None:
+            # argparse callback dispatch pattern: args.func(args)
+            # Conservatively analyze all handlers discovered via set_defaults(func=...).
+            if (
+                node.func.attr == "func"
+                and self.argparse_handler_names
+                and node.args
+                and TaintAnalyzer.expression_is_tainted(
+                    node.args[0],
+                    self.tainted_variables,
+                    self.function_summaries,
+                )
+            ):
+                for handler_name in self.argparse_handler_names:
+                    if (
+                        handler_name in self.function_defs
+                        and handler_name not in self._call_stack
+                    ):
+                        resolved_function_names.append(handler_name)
+
+        for resolved_function_name in resolved_function_names:
             function_def = self.function_defs[resolved_function_name]
             parameter_names = [
                 arg.arg
