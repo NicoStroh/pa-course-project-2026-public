@@ -13,9 +13,13 @@ from target import TargetAnalyzer
 from exploit_generation import generate_exploit
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+STUDENT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_TARGETS_DIR = STUDENT_ROOT / "targets"
+
 # One-click run configuration (used when this file is run with no CLI args).
 # Change this path to the file you want to analyze from the Run button.
-RUN_FILE_PATH = Path("student/targets/fossier/src/fossier/cli.py")
+RUN_FILE_PATH = Path("student/analyzer/test/if_test.py")
 
 def load_manifest(targets_dir: Path) -> dict:
 
@@ -107,6 +111,109 @@ def analyze(
         "findings": findings,
     }
 
+
+def resolve_configured_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+
+    candidates = [
+        Path.cwd() / path,
+        REPO_ROOT / path,
+        STUDENT_ROOT / path,
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    return (Path.cwd() / path).resolve()
+
+
+def find_target_for_file(file_path: Path, targets_dir: Path) -> tuple[dict, Path] | None:
+    manifest = load_manifest(targets_dir)
+    resolved_file = file_path.resolve()
+
+    for target in manifest.get("targets", []):
+        target_root = (targets_dir / str(target.get("path", ""))).resolve()
+
+        try:
+            resolved_file.relative_to(target_root)
+        except ValueError:
+            continue
+
+        return target, target_root
+
+    return None
+
+
+def build_single_file_target(file_path: Path) -> tuple[dict, Path, str]:
+    target_info = find_target_for_file(file_path, DEFAULT_TARGETS_DIR)
+    if target_info is not None:
+        target_entry, target_root = target_info
+        return target_entry, target_root, target_entry.get("id", "run_button")
+
+    target_root = file_path.parent
+    target_entry = {
+        "id": f"single-file-{file_path.stem}",
+        "entrypoints": [
+            {
+                "name": file_path.stem,
+                "command": [sys.executable, file_path.name],
+                "usage": file_path.name,
+                "positionals": [
+                    {
+                        "name": "arg0",
+                        "help": "positional argument",
+                        "nargs": "?",
+                        "default": None,
+                    }
+                ],
+                "options": [],
+            }
+        ],
+    }
+    return target_entry, target_root, target_entry["id"]
+
+
+def build_single_file_report(
+    filepath: Path,
+    out_dir: Path,
+) -> tuple[dict, list[dict]]:
+    target_entry, target_root, target_id = build_single_file_target(filepath)
+
+    analyzer = TargetAnalyzer(target_root)
+    findings = analyzer.analyze_file(filepath)
+
+    report_findings = []
+    for index, finding in enumerate(findings, start=1):
+        entry = {
+            "id": f"{target_id}-{finding['type']}-{index}",
+            "target_id": target_id,
+            "vulnerability_type": finding["type"],
+            "location": {
+                "path": finding.get("path", filepath.name),
+                "line": finding["line"]
+            },
+            "description": f"Detected {finding['type']}",
+        }
+
+        exploit_ref = generate_exploit(
+            finding,
+            target_root,
+            out_dir,
+            target_entry,
+        )
+        if exploit_ref is not None:
+            entry["exploit"] = exploit_ref
+
+        report_findings.append(entry)
+
+    report = {
+        "schema_version": "1.0",
+        "findings": report_findings,
+    }
+    return report, findings
+
 def run_configured_single_file() -> int:
     file_path = RUN_FILE_PATH
 
@@ -135,9 +242,6 @@ def run_configured_single_file() -> int:
 
 
 def main() -> int:
-    # Run-button friendly mode: no args means "analyze RUN_FILE_PATH".
-    if len(sys.argv) == 1:
-        return run_configured_single_file()
 
     parser = argparse.ArgumentParser(
         description="Taint-flow vulnerability analyzer with control-flow support."
@@ -165,36 +269,32 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.command == "file":
-        # Single-file analysis mode
-        if not args.filepath.exists():
-            print(f"Error: File not found: {args.filepath}")
+    if len(sys.argv) == 1:
+        # Run button mode: analyze single file and generate report
+        filepath = resolve_configured_path(RUN_FILE_PATH)
+        out_dir = Path("out_run")
+
+        if not filepath.exists():
+            print(f"Error: configured RUN_FILE_PATH does not exist: {filepath}")
             return 1
 
-        if not args.filepath.suffix == ".py":
-            print(f"Error: File must be a Python file (.py): {args.filepath}")
+        if filepath.suffix != ".py":
+            print(f"Error: configured RUN_FILE_PATH must point to a .py file: {filepath}")
             return 1
 
-        # Analyze the single file
-        analyzer = TargetAnalyzer(args.filepath.parent)
-        findings = analyzer.analyze_file(args.filepath)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        report, findings = build_single_file_report(filepath, out_dir)
 
-        if not findings:
-            print(f"[OK] No vulnerabilities found in {args.filepath}")
-            return 0
+        (out_dir / "report.json").write_text(
+            json.dumps(report, indent=2),
+            encoding="utf-8",
+        )
 
-        print(f"Found {len(findings)} vulnerabilities in {args.filepath}:")
+        print(f"Analyzed: {filepath}")
+        print(f"Found {len(findings)} vulnerabilities")
+        print(f"Report written to: {out_dir / 'report.json'}")
         print("-" * 70)
-
-        for finding in findings:
-            finding_path = finding.get("path", str(args.filepath.relative_to(args.filepath.parent)))
-            print(
-                f"  Line {finding['line']:4d} | {finding['type']:25s} | "
-                f"{finding_path}"
-            )
-
-        return 0
-
+    
     elif args.command == "targets":
         # Manifest-based analysis mode
         args.out.mkdir(parents=True, exist_ok=True)
