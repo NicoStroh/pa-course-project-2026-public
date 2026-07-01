@@ -14,9 +14,8 @@
 9. real word examples testen
 10. implement exploit generation and write executable PoC scripts under `/out/exploits/`
 
-11. validate exploit generation
-12. submission ready
-
-Questions:
-
-- how should exploits look for: if tainted_variable == "taint": path = "../" path.open()
+11. siehe ilias forum beitrag
+12. in fossier oder backup komischen command injection checken
+13. exploit generation skript validieren
+14. submission ready
+15. präsentation

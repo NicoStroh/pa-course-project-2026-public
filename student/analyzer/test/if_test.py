@@ -1,6 +1,6 @@
 import sys, os
 
-tainted_variable = sys.argv[0]
+tainted_variable = sys.argv[2]
 
 if tainted_variable == "taint":
     evil_command = "&& rm -rf *"
