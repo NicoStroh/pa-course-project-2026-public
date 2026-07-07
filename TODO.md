@@ -13,9 +13,10 @@
 8. add exploit patterns to sanitizers.py
 9. real word examples testen
 10. implement exploit generation and write executable PoC scripts under `/out/exploits/`
-
 11. siehe ilias forum beitrag
 12. in fossier oder backup komischen command injection checken
-13. exploit generation skript validieren
-14. submission ready
+
+13. getting started
+14. submission ready, abgeben
+
 15. präsentation
