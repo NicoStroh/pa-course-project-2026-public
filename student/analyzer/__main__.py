@@ -39,13 +39,47 @@ def load_manifest(targets_dir: Path) -> dict:
 def analyze(
     targets_dir: Path,
     out_dir: Path,
+    single_target_folder: str | None = None,
 ) -> dict:
 
     findings: list[dict] = []
 
     manifest = load_manifest(targets_dir)
 
-    for target in manifest.get("targets", []):
+    targets = manifest.get("targets", [])
+
+    if single_target_folder:
+        requested = single_target_folder.strip()
+
+        def normalize(name: str) -> str:
+            return name.strip().lower().replace("_", "-")
+
+        requested_normalized = normalize(requested)
+
+        filtered_targets = [
+            target
+            for target in targets
+            if requested in {
+                str(target.get("id", "")),
+                str(target.get("path", "")),
+            }
+            or requested_normalized in {
+                normalize(str(target.get("id", ""))),
+                normalize(str(target.get("path", ""))),
+            }
+        ]
+
+        if not filtered_targets:
+            raise ValueError(f"No target found with folder name or id: {single_target_folder}")
+
+        if len(filtered_targets) > 1:
+            raise ValueError(
+                f"Multiple targets found for: {single_target_folder}"
+            )
+
+        targets = filtered_targets
+
+    for target in targets:
 
         target_root = (
             targets_dir
@@ -243,6 +277,40 @@ def run_configured_single_file() -> int:
 
 def main() -> int:
 
+    if len(sys.argv) > 1 and sys.argv[1] not in {"file", "targets", "-h", "--help"}:
+        # Backward-compatible CLI mode expected by the Makefile:
+        # analyze <targets_dir> <out_dir> [single_target_folder]
+        legacy_parser = argparse.ArgumentParser(
+            description="Taint-flow vulnerability analyzer with control-flow support."
+        )
+        legacy_parser.add_argument("targets", type=Path, help="Path to targets directory")
+        legacy_parser.add_argument("out", type=Path, help="Output directory for report.json")
+        legacy_parser.add_argument(
+            "single_target_folder",
+            nargs="?",
+            default=None,
+            help="Optional target folder/id to analyze",
+        )
+        legacy_args = legacy_parser.parse_args()
+
+        legacy_args.out.mkdir(parents=True, exist_ok=True)
+
+        report = analyze(
+            legacy_args.targets,
+            legacy_args.out,
+            legacy_args.single_target_folder,
+        )
+
+        (legacy_args.out / "report.json").write_text(
+            json.dumps(report, indent=2),
+            encoding="utf-8",
+        )
+
+        findings = report.get("findings", [])
+        print(f"Analysis complete. Found {len(findings)} vulnerabilities.")
+        print(f"Report written to: {legacy_args.out / 'report.json'}")
+        return 0
+
     parser = argparse.ArgumentParser(
         description="Taint-flow vulnerability analyzer with control-flow support."
     )
@@ -265,6 +333,12 @@ def main() -> int:
         "out",
         type=Path,
         help="Output directory for report.json",
+    )
+    targets_parser.add_argument(
+        "single_target_folder",
+        nargs="?",
+        default=None,
+        help="Optional target folder/id to analyze",
     )
 
     args = parser.parse_args()
@@ -299,7 +373,7 @@ def main() -> int:
         # Manifest-based analysis mode
         args.out.mkdir(parents=True, exist_ok=True)
 
-        report = analyze(args.targets, args.out)
+        report = analyze(args.targets, args.out, args.single_target_folder)
 
         (args.out / "report.json").write_text(
             json.dumps(report, indent=2),
