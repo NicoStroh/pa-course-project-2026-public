@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.0",
+  "findings": [
+    {
+      "id": "toy-command-runner-command_injection-1",
+      "target_id": "toy-command-runner",
+      "vulnerability_type": "command_injection",
+      "location": {
+        "path": "toybackup/runner.py",
+        "line": 19
+      },
+      "description": "Detected command_injection",
+      "exploit": {
+        "path": "exploits/toy-command-runner-command_injection-19.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "toy-rule-engine-code_injection-1",
+      "target_id": "toy-rule-engine",
+      "vulnerability_type": "code_injection",
+      "location": {
+        "path": "rule_engine/evaluator.py",
+        "line": 11
+      },
+      "description": "Detected code_injection",
+      "exploit": {
+        "path": "exploits/toy-rule-engine-code_injection-11.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "toy-tiny-sql-app-sql_injection-1",
+      "target_id": "toy-tiny-sql-app",
+      "vulnerability_type": "sql_injection",
+      "location": {
+        "path": "tiny_sql_app/search.py",
+        "line": 26
+      },
+      "description": "Detected sql_injection",
+      "exploit": {
+        "path": "exploits/toy-tiny-sql-app-sql_injection-26.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "toy-note-server-path_traversal-1",
+      "target_id": "toy-note-server",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "note_server/files.py",
+        "line": 12
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/toy-note-server-path_traversal-12.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "toy-pickle-profile-loader-unsafe_deserialization-1",
+      "target_id": "toy-pickle-profile-loader",
+      "vulnerability_type": "unsafe_deserialization",
+      "location": {
+        "path": "profile_loader/loader.py",
+        "line": 13
+      },
+      "description": "Detected unsafe_deserialization",
+      "exploit": {
+        "path": "exploits/toy-pickle-profile-loader-unsafe_deserialization-13.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "markdown2-command_injection-1",
+      "target_id": "markdown2",
+      "vulnerability_type": "command_injection",
+      "location": {
+        "path": "lib/markdown2.py",
+        "line": 4800
+      },
+      "description": "Detected command_injection",
+      "exploit": {
+        "path": "exploits/markdown2-command_injection-4800.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "markdown2-path_traversal-2",
+      "target_id": "markdown2",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "lib/markdown2.py",
+        "line": 4750
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/markdown2-path_traversal-4750.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "markdown2-path_traversal-3",
+      "target_id": "markdown2",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "lib/markdown2.py",
+        "line": 4797
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/markdown2-path_traversal-4797.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "tgconvertor-path_traversal-1",
+      "target_id": "tgconvertor",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "TGConvertor/__main__.py",
+        "line": 293
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/tgconvertor-path_traversal-293.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-command_injection-1",
+      "target_id": "backup-py",
+      "vulnerability_type": "command_injection",
+      "location": {
+        "path": "backup.py",
+        "line": 655
+      },
+      "description": "Detected command_injection",
+      "exploit": {
+        "path": "exploits/backup-py-command_injection-655.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-command_injection-2",
+      "target_id": "backup-py",
+      "vulnerability_type": "command_injection",
+      "location": {
+        "path": "backup.py",
+        "line": 696
+      },
+      "description": "Detected command_injection",
+      "exploit": {
+        "path": "exploits/backup-py-command_injection-696.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-path_traversal-3",
+      "target_id": "backup-py",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "backup.py",
+        "line": 768
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/backup-py-path_traversal-768.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-path_traversal-4",
+      "target_id": "backup-py",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "backup.py",
+        "line": 623
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/backup-py-path_traversal-623.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-path_traversal-5",
+      "target_id": "backup-py",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "backup.py",
+        "line": 636
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/backup-py-path_traversal-636.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-path_traversal-6",
+      "target_id": "backup-py",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "backup.py",
+        "line": 732
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/backup-py-path_traversal-732.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "backup-py-unsafe_deserialization-7",
+      "target_id": "backup-py",
+      "vulnerability_type": "unsafe_deserialization",
+      "location": {
+        "path": "backup.py",
+        "line": 769
+      },
+      "description": "Detected unsafe_deserialization",
+      "exploit": {
+        "path": "exploits/backup-py-unsafe_deserialization-769.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "fossier-code_injection-1",
+      "target_id": "fossier",
+      "vulnerability_type": "code_injection",
+      "location": {
+        "path": "src/fossier/cli.py",
+        "line": 633
+      },
+      "description": "Detected code_injection",
+      "exploit": {
+        "path": "exploits/fossier-code_injection-633.py",
+        "kind": "python"
+      }
+    },
+    {
+      "id": "fossier-path_traversal-2",
+      "target_id": "fossier",
+      "vulnerability_type": "path_traversal",
+      "location": {
+        "path": "src/fossier/trustdown.py",
+        "line": 44
+      },
+      "description": "Detected path_traversal",
+      "exploit": {
+        "path": "exploits/fossier-path_traversal-44.py",
+        "kind": "python"
+      }
+    }
+  ]
+}
